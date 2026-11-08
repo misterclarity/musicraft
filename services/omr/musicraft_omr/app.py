@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import hmac
+import json
+from typing import Annotated
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import __version__
 from .config import Settings
 from .engine import create_engine
+from .imaging import UnsupportedFile, detect_page, open_image, sniff
+from .jobs import JobLimitError, JobManager, PageSpec
 
 # Paths that answer without the internal key, like llama-server's /health.
 PUBLIC_PATHS = {"/health"}
@@ -35,13 +39,53 @@ class StripPrefixMiddleware:
         await self.app(scope, receive, send)
 
 
+def _read_limited(upload: UploadFile, limit: int) -> bytes:
+    data = upload.file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(status_code=413, detail=f"The upload is larger than {limit // (1024 * 1024)} MB.")
+    return data
+
+
+def _parse_specs(options: str | None) -> list[PageSpec] | None:
+    if not options:
+        return None
+    try:
+        parsed = json.loads(options)
+        pages = parsed.get("pages")
+        if pages is None:
+            return None
+        specs = []
+        for item in pages:
+            corners = item.get("corners")
+            if corners is not None:
+                if len(corners) != 4 or not all(
+                    len(c) == 2 and 0 <= c[0] <= 1 and 0 <= c[1] <= 1 for c in corners
+                ):
+                    raise ValueError("corners must be four [x, y] pairs between 0 and 1")
+                corners = [(float(c[0]), float(c[1])) for c in corners]
+            specs.append(
+                PageSpec(
+                    file=int(item["file"]),
+                    page=int(item.get("page", 0)),
+                    corners=corners,
+                    rotation=int(item.get("rotation", 0)) % 360,
+                )
+            )
+        return specs
+    except (ValueError, KeyError, TypeError, AttributeError) as error:
+        raise HTTPException(status_code=400, detail=f"Invalid options: {error}") from error
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     engine = create_engine(settings)
+    manager = JobManager(settings, engine)
+    limit = settings.max_upload_mb * 1024 * 1024
 
     app = FastAPI(title="Musicraft OMR", version=__version__, docs_url=None, redoc_url=None)
     app.state.settings = settings
     app.state.engine = engine
+    app.state.jobs = manager
 
     @app.middleware("http")
     async def require_key(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -54,13 +98,71 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, object]:
-        info = engine.info()
         return {
             "status": "ok",
             "version": __version__,
-            "engine": info,
+            "engine": engine.info(),
             "limits": {"maxUploadMb": settings.max_upload_mb, "maxPages": settings.max_pages},
         }
+
+    @app.post("/v1/pages/detect")
+    def detect(file: Annotated[UploadFile, File()]) -> dict[str, object]:
+        data = _read_limited(file, limit)
+        try:
+            kind = sniff(data)
+            if kind == "pdf":
+                return {"kind": "pdf", "corners": None, "confidence": 0}
+            image = open_image(data)
+        except UnsupportedFile as error:
+            raise HTTPException(status_code=415, detail=str(error)) from error
+        found = detect_page(image)
+        return {
+            "kind": "image",
+            "width": image.width,
+            "height": image.height,
+            "corners": [list(c) for c in found.corners] if found else None,
+            "confidence": found.confidence if found else 0,
+        }
+
+    @app.post("/v1/omr/jobs", status_code=202)
+    def create_job(
+        files: Annotated[list[UploadFile], File()],
+        options: Annotated[str | None, Form()] = None,
+    ) -> dict[str, object]:
+        specs = _parse_specs(options)
+        payload: list[tuple[str, bytes]] = []
+        remaining = limit
+        for upload in files:
+            data = _read_limited(upload, remaining)
+            remaining -= len(data)
+            payload.append((upload.filename or "upload", data))
+        try:
+            job = manager.submit(payload, specs)
+        except UnsupportedFile as error:
+            raise HTTPException(status_code=415, detail=str(error)) from error
+        except JobLimitError as error:
+            raise HTTPException(status_code=429, detail=str(error)) from error
+        return job.to_json(include_music=False)
+
+    @app.get("/v1/omr/jobs/{job_id}")
+    def get_job(job_id: str) -> dict[str, object]:
+        job = manager.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Unknown or expired job.")
+        return job.to_json(include_music=job.status == "done")
+
+    @app.get("/v1/omr/jobs/{job_id}/pages/{index}/image")
+    def page_image(job_id: str, index: int) -> FileResponse:
+        path = manager.page_image(job_id, index)
+        if not path:
+            raise HTTPException(status_code=404, detail="No such page image.")
+        return FileResponse(path, media_type="image/png")
+
+    @app.delete("/v1/omr/jobs/{job_id}", status_code=204)
+    def delete_job(job_id: str) -> Response:
+        if not manager.delete(job_id):
+            raise HTTPException(status_code=404, detail="Unknown or expired job.")
+        return Response(status_code=204)
 
     # CORS wraps everything (including 401 answers) so the browser can read errors.
     app.add_middleware(

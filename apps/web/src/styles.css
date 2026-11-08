@@ -88,3 +88,55 @@ body {
 #print-root {
   display: none;
 }
+
+/* Original pages of scanned scores, shown next to the recognised music */
+.original-pages {
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+  background: var(--mantine-color-default-hover);
+}
+
+.original-page {
+  margin-bottom: 16px;
+}
+
+.original-frame {
+  position: relative;
+}
+
+.original-page img {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
+}
+
+.original-staff {
+  position: absolute;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.original-staff:hover {
+  background: rgb(34 139 230 / 8%);
+  outline: 1px dashed rgb(34 139 230 / 50%);
+}
+
+.original-highlight {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 3px;
+  background: rgb(34 139 230 / 14%);
+  outline: 2px solid rgb(34 139 230 / 70%);
+}
+
+.original-point {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  border: 3px solid #e8590c;
+  pointer-events: none;
+}

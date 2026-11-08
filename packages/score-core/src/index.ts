@@ -11,6 +11,7 @@ export * from "./checks";
 export * from "./performance";
 export * from "./midi";
 export * from "./ops";
+export * from "./omr";
 export { importMusicXml, importMxl, importMusicFile, type ImportOptions, type ImportResult } from "./musicxml/import";
 export {
   exportMusicXml,

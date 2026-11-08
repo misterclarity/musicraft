@@ -74,6 +74,12 @@ export interface ImportOptions {
    * for recognised pages, where a short bar is more likely a recognition error.
    */
   detectPickups?: boolean;
+  /**
+   * Place each note right after the previous note of its voice, using the file's time position only
+   * for a voice's first note in a bar. Recognition engines sometimes omit the <backup> elements
+   * between staves; this keeps their rhythms intact.
+   */
+  sequentialVoices?: boolean;
 }
 
 export interface ImportResult {
@@ -81,6 +87,8 @@ export interface ImportResult {
   warnings: string[];
   /** Approximate position of notes on the source image (homr writes them as comments), by event id. */
   imagePositions: Record<string, { x: number; y: number }>;
+  /** Measure indexes where a new system (line of music) starts in the source, from <print new-system>. */
+  systemStarts: number[];
 }
 
 /** Import a MusicXML document (partwise). */
@@ -155,6 +163,7 @@ class Importer {
   private warnings = new Set<string>();
   private imagePositions: Record<string, { x: number; y: number }> = {};
   private measures: MeasureInfo[] = [];
+  private systemStarts = new Set<number>([0]);
 
   constructor(
     private root: Element,
@@ -210,7 +219,12 @@ class Importer {
     if (first && !first.key) first.key = { fifths: 0, mode: "major" };
     if (this.options.detectPickups !== false) markShortMeasures(score);
 
-    return { score, warnings: [...this.warnings], imagePositions: this.imagePositions };
+    return {
+      score,
+      warnings: [...this.warnings],
+      imagePositions: this.imagePositions,
+      systemStarts: [...this.systemStarts].filter((m) => m < this.measures.length).sort((a, b) => a - b),
+    };
   }
 
   private readMeta(): Score["meta"] {
@@ -488,7 +502,9 @@ class Importer {
               lastNote = undefined;
             }
 
-            const build = voiceAt(staff, voiceNumber, cursor);
+            const existing = builds.get(`${staff}/${voiceNumber}`);
+            const onset = this.options.sequentialVoices && existing ? existing.end : cursor;
+            const build = voiceAt(staff, voiceNumber, onset);
             build.voice.events.push(event);
             if (!graceEl) {
               const value = event.kind === "rest" && event.measureRest ? actual : durationValue(event.duration);
@@ -510,6 +526,11 @@ class Importer {
             if (tempo > 0 && !measureInfo.tempo) measureInfo.tempo = { bpm: Math.round(tempo), beatUnit: "quarter" };
             break;
           }
+          case "print":
+            if (isFirstPart && (el.getAttribute("new-system") === "yes" || el.getAttribute("new-page") === "yes")) {
+              this.systemStarts.add(mIndex);
+            }
+            break;
           case "harmony":
             this.warn("Chord symbols are not supported yet and were skipped.");
             break;

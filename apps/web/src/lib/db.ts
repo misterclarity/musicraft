@@ -38,9 +38,14 @@ export interface PageRecord {
 }
 
 export interface PageLayout {
+  /** Staff boxes, normalised 0–1, top to bottom. */
   staffs: { x: number; y: number; width: number; height: number; grand?: boolean }[];
+  /** Staves per system (2 for piano), to group staff boxes into lines of music. */
+  staffsPerSystem?: number;
   /** First and last measure index of the score that came from this page. */
   measureRange?: [number, number];
+  /** Where each system starts, as measure indexes relative to the page's first measure. */
+  systemStarts?: number[];
   /** Approximate note positions in image pixels, by event id. */
   notePositions?: Record<string, { x: number; y: number }>;
 }

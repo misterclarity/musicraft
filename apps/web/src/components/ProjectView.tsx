@@ -7,29 +7,34 @@ import {
   Group,
   Loader,
   ScrollArea,
+  SegmentedControl,
   Switch,
   Tabs,
   Text,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { useDisclosure, useHotkeys } from "@mantine/hooks";
+import { useDisclosure, useHotkeys, useMediaQuery } from "@mantine/hooks";
 import { checkScore, type Issue, type Score } from "@musicraft/score-core";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
   IconChevronLeft,
+  IconPhoto,
   IconSettings,
   IconZoomIn,
   IconZoomOut,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { PageRecord } from "../lib/db";
 import { describeSelection } from "../lib/describe";
+import { listPages } from "../lib/projects";
 import { modals } from "../lib/modals";
 import { EMPTY_SELECTION, useProject } from "../state/project";
 import { ExportMenu } from "./ExportMenu";
 import { HistoryPanel } from "./HistoryPanel";
 import { IssuesPanel } from "./IssuesPanel";
+import { OriginalPages } from "./OriginalPages";
 import { PartsPanel } from "./PartsPanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { ScoreView, type MeasureMark } from "./ScoreView";
@@ -40,6 +45,10 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const [tab, setTab] = useState<string | null>("parts");
   const [focus, setFocus] = useState<number | null>(null);
   const [missing, setMissing] = useState(false);
+  const [pages, setPages] = useState<PageRecord[]>([]);
+  const [showOriginal, setShowOriginal] = useState(true);
+  const [mobileView, setMobileView] = useState<"score" | "original">("score");
+  const narrow = useMediaQuery("(max-width: 62em)");
 
   useEffect(() => {
     let active = true;
@@ -49,6 +58,9 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
       .then((ok) => {
         if (active && !ok) setMissing(true);
       });
+    void listPages(projectId).then((list) => {
+      if (active) setPages(list);
+    });
     return () => {
       active = false;
       useProject.getState().close();
@@ -159,6 +171,13 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                 <IconZoomIn size={18} />
               </ActionIcon>
             </Group>
+            {pages.length > 0 && !narrow && (
+              <Tooltip label="Show the original pages next to the score">
+                <ActionIcon variant={showOriginal ? "light" : "subtle"} onClick={() => setShowOriginal((v) => !v)} aria-label="Original pages">
+                  <IconPhoto size={18} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <PlaybackBar score={score} selection={project.selection} />
             <ExportMenu score={score} name={project.name} projectId={projectId} />
             <ActionIcon variant="subtle" onClick={onOpenSettings} aria-label="Settings">
@@ -211,16 +230,46 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
       </AppShell.Navbar>
 
       <AppShell.Main style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-        <div style={{ flex: 1, minHeight: 0 }}>
-          <ScoreView
-            score={score}
-            concert={project.concert}
-            zoom={project.zoom}
-            selection={project.selection}
-            onSelect={project.select}
-            marks={marks}
-            focusMeasure={focus}
+        {pages.length > 0 && narrow && (
+          <SegmentedControl
+            size="xs"
+            m="xs"
+            value={mobileView}
+            onChange={(v) => setMobileView(v as "score" | "original")}
+            data={[
+              { value: "score", label: "Score" },
+              { value: "original", label: "Original" },
+            ]}
           />
+        )}
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          {pages.length > 0 && (narrow ? mobileView === "original" : showOriginal) && (
+            <div style={{ flex: narrow ? 1 : "0 0 42%", minWidth: 0, borderRight: "1px solid var(--mantine-color-default-border)" }}>
+              <OriginalPages
+                pages={pages}
+                score={score}
+                selection={project.selection}
+                onSelectMeasure={(m) => {
+                  project.select({ eventIds: [], measures: { from: m, to: m } });
+                  setFocus(m);
+                  if (narrow) setMobileView("score");
+                }}
+              />
+            </div>
+          )}
+          {(!narrow || mobileView === "score" || pages.length === 0) && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <ScoreView
+                score={score}
+                concert={project.concert}
+                zoom={project.zoom}
+                selection={project.selection}
+                onSelect={project.select}
+                marks={marks}
+                focusMeasure={focus}
+              />
+            </div>
+          )}
         </div>
         <Group px="md" py={4} justify="space-between" style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
           <Text size="xs" c="dimmed" data-testid="status">
