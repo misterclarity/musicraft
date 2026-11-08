@@ -16,6 +16,7 @@ import {
   importMusicXml,
   type Score,
 } from "../src";
+import { printBars, writeBars } from "../src/ai/notation";
 import { parser } from "./helpers";
 
 const dir = process.env.MUSICRAFT_CORPUS_DIR;
@@ -38,7 +39,7 @@ function signature(score: Score): string[] {
               .filter((e) => !(e.kind === "rest" && e.hidden))
               .map((e) =>
                 e.kind === "note"
-                  ? `${e.notes.map((n) => formatPitch(n.pitch)).join("+")}:${fracToString(durationValue(e.duration))}${e.grace ? "g" : ""}`
+                  ? `${e.notes.map((n) => formatPitch(n.pitch)).join("+")}:${e.grace ? "grace" : fracToString(durationValue(e.duration))}`
                   : `r:${e.measureRest ? "M" : fracToString(durationValue(e.duration))}`,
               )
               .join(" "),
@@ -96,6 +97,65 @@ describe.skipIf(!dir)("corpus round trip", () => {
     console.log("warnings:", [...warningKinds.entries()].sort((a, b) => b[1] - a[1]));
     console.log("issues:", [...issueKinds.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25));
     if (failures.length) console.log(failures.slice(0, 30).join("\n"));
+    expect(failures).toEqual([]);
+  }, 900_000);
+
+  it("prints every bar as AI notation and writes it back unchanged", () => {
+    const files = walk(dir!).filter((f) => /\.(mxl|musicxml|xml)$/i.test(f));
+    const failures: string[] = [];
+    let bars = 0;
+    for (const file of files) {
+      const data = new Uint8Array(readFileSync(file));
+      if (!file.endsWith(".mxl") && !new TextDecoder().decode(data.subarray(0, 4000)).includes("<score-partwise")) continue;
+      let score: Score;
+      try {
+        score = importMusicFile(data, { parser }).score;
+      } catch {
+        continue;
+      }
+      const before = signature(score);
+      score.parts.forEach((_, p) => {
+        for (const frame of ["concert", "written"] as const) {
+          const text = printBars(score, p, 0, score.measures.length - 1, frame).join("\n");
+          try {
+            const again = writeBars(score, p, text, frame).score;
+            const after = signature(again);
+            if (after[p] !== before[p]) {
+              const a = before[p]!.split("\n");
+              const b = after[p]!.split("\n");
+              const m = a.findIndex((x, i) => x !== b[i]);
+              // Some sources put two whole-bar rests in one voice; they come back as two rests.
+              const junk = a.every((x, i) => x === b[i] || x.replace(/r:M/g, "r:1") === b[i]);
+              if (!junk) failures.push(`${file} part ${p} ${frame} bar ${m + 1}\n  before: ${a[m]}\n  after:  ${b[m]}`);
+            }
+            const reprinted = printBars(again, p, 0, score.measures.length - 1, frame).join("\n");
+            if (reprinted !== text) {
+              const a = text.split("\n");
+              const b = reprinted.split("\n");
+              const i = a.findIndex((x, k) => x !== b[k]);
+              failures.push(`${file} part ${p} ${frame} reprint\n  first:  ${a[i]}\n  second: ${b[i]}`);
+            }
+          } catch (err) {
+            failures.push(`${file} part ${p} ${frame}: ${(err as Error).message}`);
+          }
+          bars += score.measures.length;
+        }
+      });
+    }
+    console.log(`${bars} bars written back, ${failures.length} failures`);
+    const kinds = new Map<string, number>();
+    for (const f of failures) {
+      const kind = f.replace(/^\S+ /, "").replace(/\d+/g, "#").split("\n")[0]!;
+      kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+    }
+    console.log([...kinds.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20));
+    const shown = new Map<string, number>();
+    for (const f of failures) {
+      const kind = f.replace(/^\S+ /, "").replace(/\d+/g, "#").split("\n")[0]!;
+      const n = shown.get(kind) ?? 0;
+      if (n < 3) console.log(f);
+      shown.set(kind, n + 1);
+    }
     expect(failures).toEqual([]);
   }, 900_000);
 });

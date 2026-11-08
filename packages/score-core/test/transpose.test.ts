@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   changeInstrument,
+  getInstrument,
+  renameKey,
   concertKeys,
   exportMusicXml,
   formatPitch,
@@ -41,7 +43,7 @@ describe("instrument changes on the trumpet part", () => {
     expect(texts(doc, "fifths")).toEqual(["-2", "-5", "-3", "-1"]);
     expect(doc.getElementsByTagName("transpose")).toHaveLength(0);
     expect(writtenNotes(exportMusicXml(c)).slice(0, 3)).toEqual(["D5", "C5", "G4"]);
-    expect(c.parts[0]!.name).toBe("1st Bb Trumpet"); // custom names are kept
+    expect(c.parts[0]!.name).toBe("1st C Trumpet"); // custom names keep their wording; only the pitch word follows
   });
 
   it("Bb trumpet → Bb clarinet: written notes stay the same", () => {
@@ -110,5 +112,16 @@ describe("score operations", () => {
     expect(score.parts[5]!.instrument).toBe("piano");
     score = removePart(score, score.parts[5]!.id);
     expect(score.parts).toHaveLength(5);
+  });
+});
+
+describe("part names", () => {
+  it("follows a change of pitch within an instrument family", () => {
+    const bb = getInstrument("trumpet-bb");
+    const c = getInstrument("trumpet-c");
+    expect(renameKey("1st Bb Trumpet", bb, c)).toBe("1st C Trumpet");
+    expect(renameKey("Trumpet in B♭ 2", bb, c)).toBe("Trumpet in C 2");
+    expect(renameKey("Solo Cornet", bb, c)).toBe("Solo Cornet");
+    expect(renameKey("1st Bb Trumpet", bb, getInstrument("clarinet-bb"))).toBe("1st Bb Trumpet");
   });
 });

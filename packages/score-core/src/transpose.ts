@@ -182,6 +182,7 @@ export function changeInstrument(
     part.instrument = newInstrument.id;
     if (opts.name) part.name = opts.name;
     else if (part.name === oldInstrument.name || part.name.trim() === "") part.name = newInstrument.name;
+    else part.name = renameKey(part.name, oldInstrument, newInstrument);
     part.abbreviation = newInstrument.abbreviation;
     if (newInstrument.staves !== part.staves) {
       setStaffCount(part, newInstrument.staves);
@@ -195,6 +196,28 @@ export function changeInstrument(
       }
     }
   });
+}
+
+/** The pitch an instrument is "in" (Bb for "Trumpet in Bb"), if its name says so. */
+function instrumentKey(def: InstrumentDef): string | undefined {
+  return /\bin ([A-G][b#]?)$/.exec(def.name)?.[1];
+}
+
+/**
+ * Update a part name that mentions the old instrument's pitch ("1st Bb Trumpet" → "1st C Trumpet")
+ * when switching within a family (trumpet in Bb → trumpet in C).
+ */
+export function renameKey(name: string, from: InstrumentDef, to: InstrumentDef): string {
+  const oldKey = instrumentKey(from);
+  const newKey = instrumentKey(to);
+  if (!oldKey || !newKey || oldKey === newKey || !from.group || from.group !== to.group) return name;
+  const spellings = [oldKey, oldKey.replace("b", "♭").replace("#", "♯"), oldKey.replace("b", " flat").replace("#", " sharp")];
+  for (const spelling of spellings) {
+    const escaped = spelling.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[\\s(/])${escaped}(?=$|[\\s)/.,])`);
+    if (re.test(name)) return name.replace(re, `$1${newKey}`);
+  }
+  return name;
 }
 
 /** Change the number of staves of a part. Content of removed staves moves to the last remaining staff. */

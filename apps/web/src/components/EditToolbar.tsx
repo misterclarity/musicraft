@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Divider, Group, Kbd, Menu, Modal, ScrollArea, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Button, Divider, Group, Kbd, Menu, Modal, Stack, Table, Text, Tooltip } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { DYNAMICS, type Articulation } from "@musicraft/score-core";
 import {
@@ -47,8 +47,8 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
   const hasBars = !!selection.measures;
 
   return (
-    <ScrollArea type="never" offsetScrollbars={false}>
-      <Group gap={4} wrap="nowrap" px="sm" py={6} data-testid="edit-toolbar">
+    <div>
+      <Group gap={4} wrap="wrap" px="sm" py={6} data-testid="edit-toolbar">
         {DURATIONS.map((d) => (
           <Tool
             key={d.key}
@@ -226,6 +226,6 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
           </Table>
         </Stack>
       </Modal>
-    </ScrollArea>
+    </div>
   );
 }

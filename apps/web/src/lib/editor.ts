@@ -29,6 +29,7 @@ import {
   type Step,
 } from "@musicraft/score-core";
 import { create } from "zustand";
+import { previewActive } from "../ai/assistant";
 import { useProject, type Selection } from "../state/project";
 
 /** Editor state that is not part of the score: the length used for typed notes, and copied bars. */
@@ -50,6 +51,10 @@ function current() {
 function run(label: string, fn: (score: Score, selection: Selection) => Score | { score: Score; select?: Selection }) {
   const { project, score, selection } = current();
   if (!score) return;
+  if (previewActive()) {
+    notifications.show({ color: "orange", message: "Keep or discard the assistant's changes first." });
+    return;
+  }
   try {
     const result = fn(score, selection);
     const next = "parts" in result ? result : result.score;

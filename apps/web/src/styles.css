@@ -140,3 +140,31 @@ body {
   border: 3px solid #e8590c;
   pointer-events: none;
 }
+
+/* Assistant chat */
+.chat-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-user {
+  align-self: flex-end;
+  max-width: 88%;
+  background: var(--mantine-color-blue-light);
+}
+.chat-tool {
+  border-left: 2px solid var(--mantine-color-default-border);
+  padding-left: 8px;
+}
+.chat-suggestion {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  padding: 6px 10px;
+  text-align: left;
+}
+.chat-suggestion:hover {
+  background: var(--mantine-color-default-hover);
+}
+.chat-preview {
+  border-color: var(--mantine-color-teal-5);
+  background: var(--mantine-color-teal-light);
+}

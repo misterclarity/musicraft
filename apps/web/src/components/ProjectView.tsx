@@ -21,17 +21,22 @@ import {
   IconArrowForwardUp,
   IconChevronLeft,
   IconPhoto,
+  IconSparkles,
   IconSettings,
   IconZoomIn,
   IconZoomOut,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { notifications } from "@mantine/notifications";
+import { previewActive, useAssistant } from "../ai/assistant";
+import { changedBars } from "../ai/diff";
 import type { PageRecord } from "../lib/db";
 import { describeSelection } from "../lib/describe";
 import { handleEditorKey } from "../lib/editor";
 import { listPages } from "../lib/projects";
 import { modals } from "../lib/modals";
 import { EMPTY_SELECTION, useProject } from "../state/project";
+import { AssistantPanel } from "./AssistantPanel";
 import { BarDialogs, type BarDialog } from "./BarDialogs";
 import { EditToolbar } from "./EditToolbar";
 import { ExportMenu } from "./ExportMenu";
@@ -52,10 +57,19 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const [showOriginal, setShowOriginal] = useState(true);
   const [mobileView, setMobileView] = useState<"score" | "original">("score");
   const [barDialog, setBarDialog] = useState<BarDialog | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(() => {
+    try {
+      return localStorage.getItem("musicraft.assistantOpen") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const assistant = useAssistant();
   const narrow = useMediaQuery("(max-width: 62em)");
 
   useEffect(() => {
     let active = true;
+    useAssistant.getState().reset(projectId);
     void useProject
       .getState()
       .open(projectId)
@@ -67,12 +81,25 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
     });
     return () => {
       active = false;
+      useAssistant.getState().reset(null);
       useProject.getState().close();
     };
   }, [projectId]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("musicraft.assistantOpen", assistantOpen ? "1" : "0");
+    } catch {
+      // private mode: not remembered
+    }
+  }, [assistantOpen]);
+
   const score = project.id === projectId ? project.score : null;
   const issues = useMemo(() => (score ? checkScore(score) : []), [score]);
+  const assistantMarks = useMemo(
+    () => (assistant.draft && assistant.base ? changedBars(assistant.base, assistant.draft) : null),
+    [assistant.draft, assistant.base],
+  );
   const marks = useMemo<MeasureMark[]>(
     () =>
       tab === "issues"
@@ -84,7 +111,13 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   );
 
   const apply = useCallback(
-    (next: Score, label: string, checkpoint = false) => project.apply(next, label, { checkpoint }),
+    (next: Score, label: string, checkpoint = false) => {
+      if (previewActive()) {
+        notifications.show({ color: "orange", message: "Keep or discard the assistant's changes first." });
+        return;
+      }
+      project.apply(next, label, { checkpoint });
+    },
     [project],
   );
 
@@ -124,6 +157,8 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
     );
   }
 
+  const shown = assistant.draft ?? score;
+
   const jump = (issue: Issue) => {
     project.select({ eventIds: [], measures: { from: issue.measureIndex, to: issue.measureIndex }, partIds: [issue.partId] });
     setFocus(issue.measureIndex);
@@ -134,7 +169,12 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const nextLabel = project.future[0]?.label;
 
   return (
-    <AppShell header={{ height: 56 }} navbar={{ width: 320, breakpoint: "md", collapsed: { mobile: !navOpen } }} padding={0}>
+    <AppShell
+      header={{ height: 56 }}
+      navbar={{ width: 320, breakpoint: "md", collapsed: { mobile: !navOpen } }}
+      aside={{ width: 380, breakpoint: "md", collapsed: { desktop: !assistantOpen, mobile: !assistantOpen } }}
+      padding={0}
+    >
       <AppShell.Header>
         <Group h="100%" px="sm" justify="space-between" wrap="nowrap" gap="xs">
           <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
@@ -191,7 +231,17 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                 </ActionIcon>
               </Tooltip>
             )}
-            <PlaybackBar score={score} selection={project.selection} />
+            <Tooltip label="Ask the AI assistant">
+              <ActionIcon
+                variant={assistantOpen ? "light" : "subtle"}
+                onClick={() => setAssistantOpen((v) => !v)}
+                aria-label="Assistant"
+                data-testid="assistant-toggle"
+              >
+                <IconSparkles size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <PlaybackBar score={shown} selection={project.selection} />
             <ExportMenu score={score} name={project.name} projectId={projectId} />
             <ActionIcon variant="subtle" onClick={onOpenSettings} aria-label="Settings">
               <IconSettings size={18} />
@@ -276,12 +326,12 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
           {(!narrow || mobileView === "score" || pages.length === 0) && (
             <div style={{ flex: 1, minWidth: 0 }}>
               <ScoreView
-                score={score}
+                score={shown}
                 concert={project.concert}
                 zoom={project.zoom}
                 selection={project.selection}
                 onSelect={project.select}
-                marks={marks}
+                marks={assistantMarks ?? marks}
                 focusMeasure={focus}
               />
             </div>
@@ -289,20 +339,25 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
         </div>
         <Group px="md" py={4} justify="space-between" style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
           <Text size="xs" c="dimmed" data-testid="status">
-            {describeSelection(score, project.selection, project.concert) || "Click a note or a bar to select it."}
+            {assistant.draft
+              ? "Previewing the assistant's changes (green). Keep or discard them in the Assistant panel."
+              : describeSelection(score, project.selection, project.concert) || "Click a note or a bar to select it."}
           </Text>
           <Text size="xs" c="dimmed" visibleFrom="sm">
             {project.concert ? "Concert pitch" : "Transposed score"} · {score.measures.length} bars
           </Text>
         </Group>
       </AppShell.Main>
+      <AppShell.Aside>
+        {assistantOpen && <AssistantPanel score={shown} selection={project.selection} pages={pages} onOpenSettings={onOpenSettings} />}
+      </AppShell.Aside>
       <BarDialogs
         dialog={barDialog}
         score={score}
         selection={project.selection}
         concert={project.concert}
         onClose={() => setBarDialog(null)}
-        onApply={(next, label) => project.apply(next, label)}
+        onApply={(next, label) => apply(next, label)}
       />
     </AppShell>
   );
