@@ -5,6 +5,7 @@
  */
 import { produce, type Draft } from "immer";
 import { z } from "zod";
+import { arrangeForEnsemble } from "../arrange";
 import { checkScore } from "../checks";
 import { EditError, insertMeasures, deleteMeasures, setBarline, setKeySignature, setRehearsal, setTempo, setTimeSignature } from "../edit";
 import { add, cmp, frac, lt, type Fraction } from "../fraction";
@@ -12,6 +13,7 @@ import { analysisBeat, analyzeHarmony, describeBarHarmony } from "../harmony";
 import { newId } from "../ids";
 import {
   describeTransposition,
+  ENSEMBLES,
   getInstrument,
   hasInstrument,
   INSTRUMENTS,
@@ -811,6 +813,34 @@ const deleteBars = tool("delete_bars", "Delete bars from all parts.", { from: ba
   return { score: next, result: `Deleted ${what}. Later bars were renumbered.`, summary: `Deleted ${what}` };
 });
 
+const arrange = tool(
+  "arrange",
+  "Write a first-draft arrangement for an ensemble from the current parts (e.g. piano → brass quintet): the top line becomes the melody, the lowest line the bass, the other instruments play the harmony as chords. The ensemble's parts replace the old ones unless keep_source is true. Then refine it with the other tools.",
+  {
+    ensemble: z.enum(ENSEMBLES.map((e) => e.id) as [string, ...string[]]).optional().describe(ENSEMBLES.map((e) => `${e.id}: ${e.description}`).join("; ")),
+    instruments: z.array(z.string()).optional().describe('Instead of an ensemble: instrument ids from high to low, e.g. ["flute", "clarinet-bb", "bassoon"]'),
+    source_parts: z.array(partArg).optional().describe("Parts to arrange from (default all)"),
+    keep_source: z.boolean().optional().describe("Keep the original parts below the new ones"),
+  },
+  (score, args) => {
+    const sources = args.source_parts?.length ? resolveParts(score, args.source_parts).map((i) => score.parts[i]!.id) : undefined;
+    const instruments = args.instruments?.map((name) => ({ instrument: resolveInstrument(name).id }));
+    let result;
+    try {
+      result = arrangeForEnsemble(score, { ensemble: args.ensemble, instruments, sourcePartIds: sources, keepSource: args.keep_source });
+    } catch (err) {
+      throw new ToolError((err as Error).message);
+    }
+    const parts = result.score.parts.map((p, i) => `${partHandle(i)} "${p.name}"`).join(", ");
+    const label = args.ensemble ? ENSEMBLES.find((e) => e.id === args.ensemble)?.name ?? args.ensemble : instruments ? `${instruments.length} instruments` : "brass quintet";
+    return {
+      score: result.score,
+      result: `Arranged for ${label}. Parts now: ${parts}.\n${result.report.join("\n")}`,
+      summary: `Arranged for ${label}`,
+    };
+  },
+);
+
 /** The score tools, in the order they are offered to the model. */
 export const SCORE_TOOLS: AiTool[] = [
   getOverview,
@@ -834,6 +864,7 @@ export const SCORE_TOOLS: AiTool[] = [
   removePartTool,
   renamePartTool,
   setInfo,
+  arrange,
 ];
 
 // ---------------------------------------------------------------------------

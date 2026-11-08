@@ -275,6 +275,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
             <Tabs.Panel value="parts">
               <PartsPanel
                 score={score}
+                projectName={project.name}
                 onApply={apply}
                 selectedPartIds={project.selection.partIds}
                 onSelectPart={(partId) => project.select({ eventIds: [], partIds: [partId], measures: project.selection.measures })}

@@ -48,12 +48,18 @@ export async function createProject(
   score: Score,
   source: ProjectSource,
   pages: Omit<PageRecord, "id" | "projectId">[] = [],
+  firstVersionLabel?: string,
 ): Promise<string> {
   const id = newId("x");
   const now = Date.now();
   await db.transaction("rw", db.projects, db.versions, db.pages, async () => {
     await db.projects.add({ id, name, createdAt: now, updatedAt: now, source, score });
-    await addVersion(id, score, source === "scan" ? "Recognised from scan" : "Imported", source === "scan" ? "recognition" : "import");
+    await addVersion(
+      id,
+      score,
+      firstVersionLabel ?? (source === "scan" ? "Recognised from scan" : "Imported"),
+      source === "scan" ? "recognition" : source === "new" ? "you" : "import",
+    );
     for (const page of pages) await db.pages.add({ ...page, projectId: id });
   });
   void requestPersistentStorage();

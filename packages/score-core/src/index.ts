@@ -14,6 +14,7 @@ export * from "./ops";
 export * from "./omr";
 export * from "./edit";
 export * from "./harmony";
+export * from "./arrange";
 export * from "./ai";
 export { importMusicXml, importMxl, importMusicFile, type ImportOptions, type ImportResult } from "./musicxml/import";
 export {

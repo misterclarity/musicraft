@@ -20,9 +20,11 @@ import {
   IconPlus,
   IconTransfer,
   IconTrash,
+  IconWand,
 } from "@tabler/icons-react";
 import { useState } from "react";
 import { modals } from "../lib/modals";
+import { ArrangeModal } from "./ArrangeModal";
 import { ChangeInstrumentModal } from "./ChangeInstrumentModal";
 import { instrumentOptions } from "./NewScoreModal";
 import { TransposeModal } from "./TransposeModal";
@@ -31,15 +33,18 @@ type Dialog =
   | { kind: "instrument"; partId: string }
   | { kind: "transpose"; partId?: string }
   | { kind: "add" }
+  | { kind: "arrange" }
   | null;
 
 export function PartsPanel({
   score,
+  projectName,
   onApply,
   selectedPartIds,
   onSelectPart,
 }: {
   score: Score;
+  projectName: string;
   onApply: (next: Score, label: string, checkpoint?: boolean) => void;
   selectedPartIds?: string[];
   onSelectPart?: (partId: string) => void;
@@ -55,6 +60,9 @@ export function PartsPanel({
         </Button>
         <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => setDialog({ kind: "add" })}>
           Add part
+        </Button>
+        <Button size="xs" variant="default" leftSection={<IconWand size={14} />} onClick={() => setDialog({ kind: "arrange" })}>
+          Arrange for…
         </Button>
       </Group>
       {score.parts.map((part, index) => {
@@ -149,6 +157,9 @@ export function PartsPanel({
       )}
       {dialog?.kind === "transpose" && (
         <TransposeModal opened onClose={() => setDialog(null)} score={score} partId={dialog.partId} onApply={(next, label) => onApply(next, label, true)} />
+      )}
+      {dialog?.kind === "arrange" && (
+        <ArrangeModal opened onClose={() => setDialog(null)} score={score} projectName={projectName} onApply={(next, label) => onApply(next, label, true)} />
       )}
       {dialog?.kind === "add" && (
         <Modal opened onClose={() => setDialog(null)} title="Add a part">

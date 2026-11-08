@@ -42,6 +42,9 @@ export interface SoundingNote {
 export interface ChordGuess {
   /** e.g. "Bb", "F7/A", "Gm"; a single pitch class is shown in brackets, e.g. "(C)". */
   name: string;
+  /** Pitch class of the root and the chord quality ("", "m", "7", …), to compare chords. */
+  rootPc?: number;
+  quality?: string;
   root?: Pick<Pitch, "step" | "alter">;
   bass?: Pick<Pitch, "step" | "alter">;
   /** Pitch classes (0–11) of the chord. */
@@ -57,8 +60,15 @@ export function pitchName(p: Pick<Pitch, "step" | "alter">): string {
   return `${p.step}${acc}`;
 }
 
+export interface NameChordOptions {
+  /** A chord to keep if it still explains the notes nearly as well (harmonic inertia). */
+  prefer?: ChordGuess | null;
+  /** How much better another chord must be to replace the preferred one (default 0.2). */
+  inertia?: number;
+}
+
 /** Name the chord formed by a set of sounding notes, or null for silence. */
-export function nameChord(notes: SoundingNote[]): ChordGuess | null {
+export function nameChord(notes: SoundingNote[], options: NameChordOptions = {}): ChordGuess | null {
   const weights = new Map<number, number>();
   const spelling = new Map<number, Map<string, { p: Pitch; w: number }>>();
   let total = 0;
@@ -111,7 +121,8 @@ export function nameChord(notes: SoundingNote[]): ChordGuess | null {
         0.18 * (missing - fifthMissing) -
         0.06 * fifthMissing -
         template.cost +
-        (root === bassPc ? 0.08 : 0);
+        (root === bassPc ? 0.08 : 0) +
+        (options.prefer && options.prefer.rootPc === root && options.prefer.quality === template.suffix ? (options.inertia ?? 0.2) : 0);
       if (!best || score > best.score + 1e-9) best = { score, root, template, fit: inside / total };
     }
   }
@@ -121,6 +132,8 @@ export function nameChord(notes: SoundingNote[]): ChordGuess | null {
   const slash = root !== bassPc ? `/${pitchName(bassName)}` : "";
   return {
     name: `${pitchName(rootName)}${template.suffix}${slash}`,
+    rootPc: root,
+    quality: template.suffix,
     root: rootName,
     bass: bassName,
     pitchClasses: template.intervals.map((i) => (root + i) % 12),
