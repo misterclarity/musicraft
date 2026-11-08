@@ -9,6 +9,7 @@ import {
   isUnison,
   negateInterval,
   prettyName,
+  renameKey,
   type InstrumentChangeMode,
   type Score,
 } from "@musicraft/score-core";
@@ -82,7 +83,8 @@ export function ChangeInstrumentModal({
           onChange={(v) => {
             const id = v ?? part.instrument;
             setInstrumentId(id);
-            if (!keepsName) setName(getInstrument(id).name);
+            // A custom name keeps its wording; only the pitch word follows ("1st Bb Trumpet" → "1st C Trumpet").
+            setName(keepsName ? renameKey(part.name, current, getInstrument(id)) : getInstrument(id).name);
           }}
           data={instrumentOptions()}
           allowDeselect={false}

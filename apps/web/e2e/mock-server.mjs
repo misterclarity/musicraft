@@ -2,11 +2,63 @@
 // streaming and tool calls, chosen by keywords in the request, and answers proofreading requests.
 // With MOCK_OMR_URL set it forwards /omr/... to a real recognition service, like gateway.py does.
 // Usage: node e2e/mock-server.mjs [port]
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { deflateSync } from "node:zlib";
 
 const port = Number(process.argv[2] ?? process.env.MOCK_PORT ?? 8790);
 const KEY = process.env.MOCK_API_KEY ?? "test-key";
 const OMR_URL = process.env.MOCK_OMR_URL;
+// Without a real recognition service, recognised pages come back as this MusicXML.
+const OMR_RESULT = readFileSync(new URL("../../../packages/score-core/test/fixtures/trumpet-part.musicxml", import.meta.url), "utf8");
+
+// ---------------------------------------------------------------------------
+// A generated page image (white, with staff lines) for the stand-in recognition service.
+// ---------------------------------------------------------------------------
+
+const PAGE = { width: 800, height: 1000, systems: [150, 450] };
+
+function crc32(buf) {
+  let c;
+  const table = (crc32.table ??= Array.from({ length: 256 }, (_, n) => {
+    c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  }));
+  let crc = 0xffffffff;
+  for (const b of buf) crc = table[(crc ^ b) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function chunk(type, data) {
+  const out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0);
+  out.write(type, 4, "ascii");
+  data.copy(out, 8);
+  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+  return out;
+}
+
+/** A grayscale PNG of a page with two five-line staves. */
+export function pagePng() {
+  const { width, height } = PAGE;
+  const rows = Buffer.alloc((width + 1) * height, 255);
+  for (let y = 0; y < height; y++) rows[y * (width + 1)] = 0;
+  for (const top of PAGE.systems) {
+    for (let line = 0; line < 5; line++) {
+      const y = top + line * 12;
+      for (let x = 60; x < width - 60; x++) rows[y * (width + 1) + 1 + x] = 0;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 0; // grayscale
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+const jobs = new Map();
 const OMR_KEY = process.env.MOCK_OMR_KEY ?? "internal-test-key";
 
 function cors(res) {
@@ -67,7 +119,7 @@ function proofread(messages) {
   if (!parts.some((p) => p.type === "image_url" && p.image_url.url.startsWith("data:image/"))) return text('{"findings": [], "missing": []}');
   const line = textPart.split("\n").find((l) => /^bar \S+( staff 1)?: /.test(l) && /[A-G]/.test(l.split(": ")[1]));
   if (!line) return text('{"findings": [], "missing": []}');
-  const bar = /^bar (\S+)/.exec(line)[1];
+  const bar = /^bar ([^\s:]+)/.exec(line)[1];
   const fixed = line.replace(/([A-G](?:#|b|x|bb)?)(\d)/, (_m, note, octave) => `${note}${Math.min(8, Number(octave) + 1)}`);
   const answer = { findings: [{ part: "P1", bar, problem: "The first note is an octave higher in the original.", fix: fixed.replace(/^bar \S+ staff 1:/, `bar ${bar} staff 1:`) }], missing: [{ part: "P1", bar, beat: 1, kind: "dynamic", value: "mf" }] };
   return text(JSON.stringify(answer));
@@ -98,11 +150,17 @@ const server = createServer((req, res) => {
     res.end();
     return;
   }
+  const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+  // A page image for tests to upload as a "photo" (no key needed).
+  if (url.pathname === "/test-page.png") {
+    res.writeHead(200, { "Content-Type": "image/png" });
+    res.end(pagePng());
+    return;
+  }
   if (req.headers.authorization !== `Bearer ${KEY}`) {
     json(res, 401, { error: { message: "Invalid API key" } });
     return;
   }
-  const url = new URL(req.url ?? "/", `http://localhost:${port}`);
   if (req.method === "GET" && url.pathname === "/v1/models") {
     json(res, 200, {
       object: "list",
@@ -133,6 +191,45 @@ const server = createServer((req, res) => {
       } catch (err) {
         json(res, 502, { error: { message: `Recognition service unreachable: ${err.message}` } });
       }
+    });
+    return;
+  }
+  // Stand-in recognition service.
+  if (req.method === "POST" && url.pathname === "/omr/v1/pages/detect") {
+    req.resume();
+    req.on("end", () => json(res, 200, { corners: null, confidence: 0 }));
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/omr/v1/omr/jobs") {
+    req.resume();
+    req.on("end", () => {
+      const id = `job${jobs.size + 1}`;
+      jobs.set(id, { created: Date.now() });
+      json(res, 202, { id, status: "queued", progress: { done: 0, total: 1, stage: "queued" }, error: null, pages: [] });
+    });
+    return;
+  }
+  const job = /^\/omr\/v1\/omr\/jobs\/([\w-]+)(\/pages\/(\d+)\/image)?$/.exec(url.pathname);
+  if (job && jobs.has(job[1])) {
+    if (req.method === "DELETE") {
+      jobs.delete(job[1]);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (job[2]) {
+      res.writeHead(200, { "Content-Type": "image/png" });
+      res.end(pagePng());
+      return;
+    }
+    const done = Date.now() - jobs.get(job[1]).created > 600;
+    const staffs = PAGE.systems.map((top) => ({ x: 60 / PAGE.width, y: top / PAGE.height, width: (PAGE.width - 120) / PAGE.width, height: 48 / PAGE.height }));
+    json(res, 200, {
+      id: job[1],
+      status: done ? "done" : "running",
+      progress: { done: done ? 1 : 0, total: 1, stage: done ? "done" : "recognising" },
+      error: null,
+      pages: [{ index: 0, status: done ? "done" : "pending", width: PAGE.width, height: PAGE.height, staffs: done ? staffs : [], error: null, ...(done ? { musicxml: OMR_RESULT } : {}) }],
     });
     return;
   }

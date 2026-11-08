@@ -1,6 +1,6 @@
 # Musicraft: project plan
 
-> **Status:** agreed 2026-11-08, implementation in progress. Section 1 records your answers to the open questions.
+> **Status:** agreed 2026-11-08. Milestones M0–M5 are implemented (see the table in section 5); M6 is future work. Section 1 records your answers to the open questions.
 
 Musicraft is a web app that turns sheet music (PDFs and phone photos) into an editable digital score, and then lets you change it:
 
@@ -221,6 +221,11 @@ Each milestone is one pull request (or a short series) and is usable on its own.
 | M4 | **AI assistant:** settings and model detection, chat with tool calling, change previews, vision proofreading of OMR results | ask "make this a C trumpet part and move bars 17–24 down an octave" |
 | M5 | **Arranging:** piano → brass quintet arranger, ensemble templates, part extraction, AI arranging tools, playability report | turn a piano piece into a quintet score with parts |
 | M6 | **Polish:** better playback (sound fonts, mixer), offline/PWA polish, MuseScore engraving option, Audiveris if the benchmark justifies it, more ensembles | — |
+
+**Progress:** M0–M5 are done and covered by unit tests, round trips over the music21 corpus of public-domain scores and end-to-end browser tests against a stand-in for `gateway.py`. Two details were settled during implementation:
+
+- The AI notation (MCN) is documented in `packages/score-core/src/ai/prompt.ts`, which is also what the model reads.
+- Vision proofreading sends the model the original crop plus the recognised bars as MCN text (written pitch), not a second image: text is cheaper in context and easier for the model to compare precisely.
 
 M1 comes first because everything builds on the score model. The server half of M2 can start alongside it, so you can try recognition on your own music early.
 
