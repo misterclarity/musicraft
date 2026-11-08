@@ -74,7 +74,7 @@ If you share `gateway.py` (or just its routing part), I can write the exact patc
 
 ## 3. CORS in `gateway.py` (needed for both `/v1` and `/omr`)
 
-The app is served from a different domain (Vercel or Netlify, or `http://localhost:5173` while
+The app is served from a different domain (Netlify or GitHub Pages, or `http://localhost:5173` while
 developing), so the browser applies CORS rules to every call to your server:
 
 - **Preflight.** Before a request that carries an `Authorization` header, the browser sends an `OPTIONS`
@@ -86,11 +86,16 @@ developing), so the browser applies CORS rules to every call to your server:
   report "couldn't reach the server".
 
 ```
-Access-Control-Allow-Origin:  https://<your-app>.vercel.app     (or * — the API key is the protection)
+Access-Control-Allow-Origin:  https://<site-name>.netlify.app   or   https://<owner>.github.io
+                              (or * — the API key is the protection)
 Access-Control-Allow-Headers: Authorization, Content-Type
 Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS
 Access-Control-Max-Age:       600
 ```
+
+The origin is scheme and host only: for GitHub Pages it is `https://<owner>.github.io` even though the
+app lives at `https://<owner>.github.io/<repository>/`. To allow several sites, compare the request's
+`Origin` header with your list and echo it back (adding `Vary: Origin`).
 
 When `gateway.py` passes the backend's response headers through, the backends already add
 `Access-Control-Allow-Origin` (llama-server reflects the caller's origin). Then only `gateway.py`'s own

@@ -1,8 +1,28 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+import { META_CSP } from "./security";
+
+/**
+ * Where the app is served from: "/" on Netlify, Vercel or a custom domain, "/<repository>/" on GitHub
+ * Pages (the Pages workflow sets BASE_PATH).
+ */
+function basePath(): string {
+  const raw = process.env.BASE_PATH?.trim() || "/";
+  return `/${raw.replace(/^\/+|\/+$/g, "")}/`.replace(/^\/\/$/, "/");
+}
+
+/** Production builds carry the Content-Security-Policy in a <meta> tag, for hosts that can't send headers. */
+function contentSecurityPolicy(): Plugin {
+  return {
+    name: "musicraft-csp",
+    apply: "build",
+    transformIndexHtml: () => [{ tag: "meta", attrs: { "http-equiv": "Content-Security-Policy", content: META_CSP }, injectTo: "head-prepend" }],
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  base: basePath(),
+  plugins: [react(), contentSecurityPolicy()],
   worker: {
     format: "es",
   },

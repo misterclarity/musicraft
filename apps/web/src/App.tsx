@@ -42,7 +42,7 @@ export function App() {
           <AppShell.Header>
             <Group h="100%" px="md" justify="space-between">
               <Group gap="xs">
-                <img src="/icon.svg" alt="" width={28} height={28} />
+                <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={28} height={28} />
                 <Title order={4}>Musicraft</Title>
               </Group>
               <Tooltip label="Settings">

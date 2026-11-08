@@ -19,7 +19,7 @@ async function useMockServer(page: Page) {
 }
 
 async function importFile(page: Page, name: string) {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByTestId("file-input").setInputFiles(fixture(name));
   await expect(page.locator(".score-page svg").first()).toBeVisible();
 }
@@ -45,7 +45,7 @@ test("imports MusicXML, rewrites the part for trumpet in C and exports it", asyn
 });
 
 test("enters notes from the keyboard and undoes them", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("button", { name: "New score" }).click();
   await page.getByRole("combobox", { name: "Ensemble" }).click();
   await page.getByRole("option", { name: /Single instrument/ }).click();
@@ -109,7 +109,7 @@ test("tool errors go back to the model and leave the score alone", async ({ page
 test("reads a photo with the recognition service, then proofreads it against the original", async ({ page, request }) => {
   await useMockServer(page);
   const photo = await (await request.get(`${MOCK}/test-page.png`)).body();
-  await page.goto("/");
+  await page.goto("./");
   await page.getByTestId("file-input").setInputFiles({ name: "page.png", mimeType: "image/png", buffer: photo });
   await expect(page.getByText("Read sheet music")).toBeVisible();
   await page.getByRole("button", { name: "Next" }).click();
@@ -151,4 +151,13 @@ test("undo while previewing discards the assistant's changes", async ({ page }) 
   await expect(page.getByTestId("assistant-preview")).toHaveCount(0);
   await expect(page.getByTestId("assistant-panel")).toContainText("Changes discarded.");
   await expect(page.getByTestId("part-card").first()).toContainText("Trumpet in B♭");
+});
+
+test("ships its Content-Security-Policy", async ({ page }) => {
+  const response = await page.goto("./");
+  const meta = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content");
+  expect(meta).toContain("default-src 'self'");
+  // Netlify and Vercel also send it as a header, with protection against framing.
+  const header = response?.headers()["content-security-policy"];
+  if (header) expect(header).toContain("frame-ancestors 'none'");
 });

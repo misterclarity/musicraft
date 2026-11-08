@@ -4,8 +4,8 @@ Musicraft turns sheet music (PDFs and phone photos) into an editable digital sco
 transform it: transpose, switch instruments, arrange for other ensembles, edit by hand, or describe the
 change to your own AI model. Export to PDF, MusicXML and MIDI.
 
-- **Web app** (`apps/web`): runs entirely in the browser; host it on Vercel or Netlify. Scores are kept in
-  your browser.
+- **Web app** (`apps/web`): runs entirely in the browser; host it on Netlify or GitHub Pages (see
+  [Deployment](#deployment)). Scores are kept in your browser.
 - **Score engine** (`packages/score-core`): the music model, MusicXML import/export, transposition,
   checks and arranging, in TypeScript.
 - **Recognition service** (`services/omr`): a Docker container on your server that reads pages with
@@ -76,10 +76,35 @@ MUSICRAFT_OMR_ENGINE=fake uv run musicraft-omr   # service with a stand-in engin
 
 ## Deployment
 
-- **Web app:** import the repository in Vercel or Netlify. `vercel.json` and `netlify.toml` contain the
-  build settings and security headers. Optionally set `VITE_DEFAULT_SERVER_URL` so the app starts with
-  your server's address filled in.
-- **Server:** see [`docs/SERVER_SETUP.md`](docs/SERVER_SETUP.md).
+The web app is a set of static files, so any static host works. Scores and your API key stay in the
+browser; the API key is never part of the build. Two ready-made setups:
+
+### Netlify (recommended)
+
+1. In Netlify: **Add new site → Import an existing project → GitHub**, and pick this repository.
+2. **Branch to deploy:** `main`, or a work branch to try it before merging. Leave the build settings
+   empty: `netlify.toml` sets them (`npm run build`, publish `apps/web/dist`, Node 22).
+3. Optional: **Site configuration → Environment variables →** `VITE_DEFAULT_SERVER_URL` with your
+   server's address, so the app starts with it filled in.
+4. Deploy. The app is at `https://<site-name>.netlify.app` (the name can be changed in Site
+   configuration). Netlify also sends the security headers from `netlify.toml`.
+
+### GitHub Pages
+
+1. **Settings → Pages → Build and deployment → Source: GitHub Actions** (once).
+2. Every push to `main` runs `.github/workflows/pages.yml`, which builds the app for
+   `https://<owner>.github.io/<repository>/` and publishes it. You can also start it from the Actions tab.
+3. Optional: **Settings → Secrets and variables → Actions → Variables →** `MUSICRAFT_SERVER_URL` with your
+   server's address (it ends up in the public site, but it isn't a secret; the key is).
+
+GitHub Pages can't send HTTP headers, so every build also carries the Content-Security-Policy as a
+`<meta>` tag. The only protection missing compared with Netlify is the one against other sites framing
+the app.
+
+### Your server
+
+Allow the site's origin in `gateway.py`'s CORS settings: `https://<site-name>.netlify.app` or
+`https://<owner>.github.io` (an origin has no path). See [`docs/SERVER_SETUP.md`](docs/SERVER_SETUP.md).
 
 ## License
 

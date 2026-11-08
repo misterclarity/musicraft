@@ -28,8 +28,18 @@ jobs:
       - run: npm run build
 
   e2e:
-    name: End-to-end tests
+    name: End-to-end tests (${{ matrix.host }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Served at / with the production headers from vercel.json/netlify.toml.
+          - host: Netlify
+            base: /
+          # Served under the repository name, without custom headers (the <meta> CSP applies).
+          - host: GitHub Pages
+            base: /musicraft/
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -40,11 +50,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       - run: npm run build
+        env:
+          BASE_PATH: ${{ matrix.base }}
       - run: npm run e2e
+        env:
+          E2E_BASE_PATH: ${{ matrix.base }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-results
+          name: playwright-results-${{ strategy.job-index }}
           path: apps/web/test-results
           retention-days: 7
 

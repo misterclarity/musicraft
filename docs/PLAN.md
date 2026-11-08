@@ -16,7 +16,7 @@ I read "make notifications" in the brief as "make modifications".
 
 | Topic | Decision |
 |---|---|
-| Hosting | Static web app on Vercel or Netlify, reachable from anywhere. No serverless functions needed. |
+| Hosting | Static web app on Netlify or GitHub Pages (Vercel also works), reachable from anywhere. No serverless functions needed. |
 | Access control | Outside API keys are checked only by your `gateway.py`, the single proxy behind Tailscale Funnel. Behind it, llama-server and the recognition service each accept one internal key that `gateway.py` adds. The app keeps your outside key in your browser and sends it only to your server. The app has no accounts of its own. |
 | Network path | Browser → Tailscale Funnel → `gateway.py` → llama-server (`/v1/…`) or the recognition service (`/omr/…`). No nginx, no router port forwarding. |
 | AI | Your llama.cpp server (vision-capable, strong reasoning) through its OpenAI-compatible API. Nothing is hardcoded: the server URL is entered in the app's settings (or set at deploy time), and the model, its context size and vision support are detected at runtime. |
@@ -92,7 +92,7 @@ The recognition container therefore installs homr from that pinned commit. I tes
 
 ```mermaid
 flowchart LR
-  subgraph B["Browser: static app on Vercel or Netlify"]
+  subgraph B["Browser: static app on Netlify or GitHub Pages"]
     UI["UI<br/>import · review · editor · AI chat · export"]
     CORE["score-core (TypeScript)<br/>score model · MusicXML · transposition<br/>arranging · checks · AI tools"]
     VRV["Verovio (WebAssembly)<br/>engraving · MIDI · time map"]
@@ -189,7 +189,7 @@ Then you can ask things like "give the B section melody to the horn", "add a tro
 ### 3.8 Security and privacy
 
 - The web app is public, but it cannot do anything without your API key. The key lives only in your browser's storage and goes only to the server URLs you set.
-- Only your server sees page images and prompts. Vercel or Netlify only serve the app's static files.
+- Only your server sees page images and prompts. Netlify or GitHub Pages only serve the app's static files.
 - The app ships a strict Content-Security-Policy. AI output is never inserted as HTML, and tool arguments are schema-validated.
 - Your scans stay in your browser and on your server. The public repo only contains public-domain, CC0 or self-made test material, so your Superman part will not be committed.
 
@@ -202,7 +202,7 @@ musicraft/
 ├── services/omr/          FastAPI recognition service + Dockerfile
 ├── deploy/                docker compose files for your server
 ├── docs/                  this plan, server setup guide
-├── vercel.json, netlify.toml
+├── netlify.toml, vercel.json, .github/workflows/pages.yml
 └── .github/workflows/     CI: type check, tests, build, Docker image
 ```
 
