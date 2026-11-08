@@ -10,6 +10,7 @@ export * from "./transpose";
 export * from "./checks";
 export * from "./performance";
 export * from "./midi";
+export * from "./ops";
 export { importMusicXml, importMxl, importMusicFile, type ImportOptions, type ImportResult } from "./musicxml/import";
 export {
   exportMusicXml,

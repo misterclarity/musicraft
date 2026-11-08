@@ -95,3 +95,20 @@ describe("transposition", () => {
     expect(JSON.stringify(score)).toBe(before);
   });
 });
+
+describe("score operations", () => {
+  it("creates scores from ensemble templates and manages parts", async () => {
+    const { newScore, addPart, removePart, movePart, ENSEMBLES, checkScore } = await import("../src");
+    const quintet = ENSEMBLES.find((e) => e.id === "brass-quintet")!;
+    let score = newScore({ title: "Quintet", parts: quintet.parts, measures: 8 });
+    expect(score.parts.map((p) => p.instrument)).toEqual(["trumpet-bb", "trumpet-bb", "horn-f", "trombone", "tuba"]);
+    expect(score.measures).toHaveLength(8);
+    expect(checkScore(score)).toEqual([]);
+    score = addPart(score, "piano", { index: 0 });
+    expect(score.parts[0]!.staves).toBe(2);
+    score = movePart(score, score.parts[0]!.id, 5);
+    expect(score.parts[5]!.instrument).toBe("piano");
+    score = removePart(score, score.parts[5]!.id);
+    expect(score.parts).toHaveLength(5);
+  });
+});

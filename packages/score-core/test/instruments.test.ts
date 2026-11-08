@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ENSEMBLES, getInstrument, INSTRUMENTS, matchInstrument, midiNumber, parseInterval, prettyName } from "../src";
+import {
+  describeTransposition,
+  ENSEMBLES,
+  getInstrument,
+  INSTRUMENTS,
+  matchInstrument,
+  midiNumber,
+  parseInterval,
+  prettyName,
+} from "../src";
 
 describe("instrument catalog", () => {
   it("has consistent ranges and clefs", () => {
@@ -50,6 +59,14 @@ describe("instrument catalog", () => {
     const quintet = ENSEMBLES.find((e) => e.id === "brass-quintet")!;
     expect(quintet.parts.map((p) => p.instrument)).toEqual(["trumpet-bb", "trumpet-bb", "horn-f", "trombone", "tuba"]);
     for (const e of ENSEMBLES) for (const p of e.parts) expect(getInstrument(p.instrument).id).toBe(p.instrument);
+  });
+
+  it("describes transpositions in words", () => {
+    expect(describeTransposition(getInstrument("trumpet-bb"))).toBe("sounds a major 2nd lower than written");
+    expect(describeTransposition(getInstrument("horn-f"))).toBe("sounds a perfect 5th lower than written");
+    expect(describeTransposition(getInstrument("tenor-sax"))).toBe("sounds an octave and a major 2nd lower than written");
+    expect(describeTransposition(getInstrument("piccolo"))).toBe("sounds an octave higher than written");
+    expect(describeTransposition(getInstrument("piano"))).toBe("sounds as written");
   });
 
   it("formats names for display", () => {

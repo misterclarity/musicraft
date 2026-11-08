@@ -127,3 +127,15 @@ describe("durations", () => {
     expect(triplet[0]!.tuplet).toEqual({ actual: 3, normal: 2 });
   });
 });
+
+describe("key to key", () => {
+  it("finds the interval between key tonics", async () => {
+    const { intervalToKey, intervalName, keyTonic } = await import("../src");
+    expect(keyTonic({ fifths: -2 })).toEqual({ step: "B", alter: -1 });
+    expect(keyTonic({ fifths: 3, mode: "minor" })).toEqual({ step: "F", alter: 1 });
+    expect(intervalName(intervalToKey({ fifths: -2 }, { fifths: 0 }))).toBe("M2");
+    expect(intervalName(intervalToKey({ fifths: 0 }, { fifths: -2 }))).toBe("-M2");
+    expect(intervalName(intervalToKey({ fifths: 0 }, { fifths: -2 }, "up"))).toBe("m7");
+    expect(intervalName(intervalToKey({ fifths: 0 }, { fifths: 1 }, "down"))).toBe("-P4");
+  });
+});

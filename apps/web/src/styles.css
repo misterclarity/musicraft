@@ -8,3 +8,83 @@ body {
   margin: 0;
   background: var(--mantine-color-body);
 }
+
+:root {
+  --mc-selection: #1c7ed6;
+  --mc-playing: #e8590c;
+}
+
+/* Score display */
+.score-view {
+  position: relative;
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.score-pages {
+  position: relative;
+}
+
+.score-page {
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  margin: 0 auto 16px;
+  max-width: 100%;
+  color: #000;
+}
+
+.score-page svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.score-page g.note,
+.score-page g.rest,
+.score-page g.mRest,
+.score-page g.chord {
+  cursor: pointer;
+}
+
+.score-pages g.mc-playing {
+  color: var(--mc-playing);
+}
+
+.measure-mark {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 4px;
+}
+
+.measure-mark-blue {
+  background: rgb(34 139 230 / 10%);
+  outline: 2px solid rgb(34 139 230 / 55%);
+}
+
+.measure-mark-red {
+  background: rgb(250 82 82 / 10%);
+  outline: 2px solid rgb(250 82 82 / 60%);
+}
+
+.measure-mark-orange {
+  background: rgb(253 126 20 / 10%);
+  outline: 2px solid rgb(253 126 20 / 60%);
+}
+
+.measure-mark-green {
+  background: rgb(64 192 87 / 12%);
+  outline: 2px solid rgb(64 192 87 / 65%);
+}
+
+.measure-mark-violet {
+  background: rgb(121 80 242 / 10%);
+  outline: 2px dashed rgb(121 80 242 / 60%);
+}
+
+/* Print: only the print root is visible (see export/exports.ts). */
+#print-root {
+  display: none;
+}

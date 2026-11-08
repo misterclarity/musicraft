@@ -1,5 +1,5 @@
 import type { Clef } from "./model";
-import { parseInterval, parsePitch, UNISON, type Interval, type Pitch } from "./pitch";
+import { intervalWords, isUnison, parseInterval, parsePitch, UNISON, type Interval, type Pitch } from "./pitch";
 
 export type InstrumentFamily = "brass" | "woodwind" | "strings" | "keyboard" | "voice" | "other";
 
@@ -188,6 +188,14 @@ export function getInstrument(id: string): InstrumentDef {
 
 export function hasInstrument(id: string): boolean {
   return BY_ID.has(id);
+}
+
+/** "sounds a major 2nd lower than written", or "sounds as written". */
+export function describeTransposition(def: InstrumentDef): string {
+  const t = def.transposition;
+  if (isUnison(t)) return "sounds as written";
+  const down = t.diatonic < 0 || (t.diatonic === 0 && t.chromatic < 0);
+  return `sounds ${intervalWords(t)} ${down ? "lower" : "higher"} than written`;
 }
 
 /** "Trumpet in Bb" → "Trumpet in B♭" for display. */

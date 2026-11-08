@@ -130,6 +130,36 @@ export function intervalName(iv: Interval): string {
   return `${sign < 0 ? "-" : ""}${quality}${diatonic + 1}`;
 }
 
+const QUALITY_WORDS: Record<string, string> = {
+  P: "perfect",
+  M: "major",
+  m: "minor",
+  A: "augmented",
+  d: "diminished",
+  AA: "doubly augmented",
+  dd: "doubly diminished",
+};
+
+function ordinal(n: number): string {
+  if (n === 1) return "unison";
+  const suffix = n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th";
+  return `${n}${suffix}`;
+}
+
+/** "a major 2nd", "an octave", "an octave and a major 2nd" (direction not included). */
+export function intervalWords(iv: Interval): string {
+  const abs: Interval = iv.diatonic < 0 || (iv.diatonic === 0 && iv.chromatic < 0) ? negateInterval(iv) : iv;
+  const octaves = Math.floor(abs.diatonic / 7);
+  const simple: Interval = { diatonic: abs.diatonic - 7 * octaves, chromatic: abs.chromatic - 12 * octaves };
+  const octaveText = octaves === 0 ? "" : octaves === 1 ? "an octave" : octaves === 2 ? "two octaves" : `${octaves} octaves`;
+  if (simple.diatonic === 0 && simple.chromatic === 0) return octaveText || "a unison";
+  const name = intervalName(simple);
+  const match = /^(AA|dd|A|d|P|M|m)(\d+)$/.exec(name);
+  const words = match ? `${QUALITY_WORDS[match[1]!]} ${ordinal(Number(match[2]))}` : name;
+  const article = /^[aeiou]/.test(words) ? "an" : "a";
+  return octaveText ? `${octaveText} and ${article} ${words}` : `${article} ${words}`;
+}
+
 export const negateInterval = (iv: Interval): Interval => ({ diatonic: -iv.diatonic, chromatic: -iv.chromatic });
 export const addIntervals = (a: Interval, b: Interval): Interval => ({
   diatonic: a.diatonic + b.diatonic,
@@ -180,6 +210,24 @@ export function parseKey(text: string): KeySignature {
   const index = tonics.indexOf(tonic);
   if (index < 0) throw new Error(`Unsupported key: "${text}"`);
   return { fifths: index - 7, mode };
+}
+
+/** The tonic of a key (letter and accidental). */
+export function keyTonic(key: KeySignature): Pick<Pitch, "step" | "alter"> {
+  const name = (key.mode === "minor" ? MINOR_TONICS : MAJOR_TONICS)[key.fifths + 7] ?? "C";
+  const accidental = name.slice(1);
+  return { step: name[0] as Step, alter: accidental === "#" ? 1 : accidental === "b" ? -1 : 0 };
+}
+
+/** The interval that moves one key's tonic to another's, upwards, downwards or the nearest way. */
+export function intervalToKey(from: KeySignature, to: KeySignature, direction: "up" | "down" | "nearest" = "nearest"): Interval {
+  const a = keyTonic(from);
+  const b = keyTonic(to);
+  let iv = intervalBetween({ ...a, octave: 4 }, { ...b, octave: 4 });
+  if (iv.chromatic < 0 || (iv.chromatic === 0 && iv.diatonic < 0)) iv = addIntervals(iv, OCTAVE);
+  if (direction === "down" && !isUnison(iv)) iv = addIntervals(iv, negateInterval(OCTAVE));
+  if (direction === "nearest" && iv.chromatic > 6) iv = addIntervals(iv, negateInterval(OCTAVE));
+  return iv;
 }
 
 const SHARP_ORDER: Step[] = ["F", "C", "G", "D", "A", "E", "B"];
