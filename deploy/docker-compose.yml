@@ -1,0 +1,28 @@
+# Recognition service for Musicraft (CPU). From this folder:
+#   openssl rand -hex 32 > omr_internal_key.txt && chmod 600 omr_internal_key.txt
+#   docker compose up -d --build
+# For the AMD GPU build add the ROCm override:
+#   docker compose -f docker-compose.yml -f docker-compose.rocm.yml up -d --build
+services:
+  musicraft-omr:
+    build:
+      context: ../services/omr
+      dockerfile: Dockerfile
+    image: musicraft-omr:cpu
+    restart: unless-stopped
+    # Only reachable from this machine; gateway.py forwards /omr/... to it.
+    ports:
+      - "127.0.0.1:8070:8070"
+    environment:
+      MUSICRAFT_OMR_API_KEY_FILE: /run/secrets/omr_internal_key
+      MUSICRAFT_OMR_CORS_ORIGINS: "*"
+      MUSICRAFT_OMR_MAX_UPLOAD_MB: "60"
+      MUSICRAFT_OMR_MAX_PAGES: "40"
+    secrets:
+      - omr_internal_key
+    tmpfs:
+      - /tmp/musicraft-omr:size=2g
+
+secrets:
+  omr_internal_key:
+    file: ./omr_internal_key.txt

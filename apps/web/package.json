@@ -1,0 +1,49 @@
+{
+  "name": "@musicraft/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Musicraft web app.",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@mantine/core": "^9.7.5",
+    "@mantine/dropzone": "^9.7.5",
+    "@mantine/hooks": "^9.7.5",
+    "@mantine/notifications": "^9.7.5",
+    "@musicraft/score-core": "0.1.0",
+    "@tabler/icons-react": "^3.50.0",
+    "dexie": "^4.4.7",
+    "fflate": "^0.8.3",
+    "jspdf": "^4.2.1",
+    "pdfjs-dist": "^6.5.438",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "svg2pdf.js": "^2.9.0",
+    "verovio": "^6.4.1",
+    "zod": "^4.6.7",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^29.0.0",
+    "postcss": "^8.5.0",
+    "postcss-preset-mantine": "^1.18.0",
+    "postcss-simple-vars": "^7.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  }
+}

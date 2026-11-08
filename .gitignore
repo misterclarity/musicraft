@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# build output
+dist/
+*.tsbuildinfo
+coverage/
+.pytest_cache/
+.ruff_cache/
+
+# test artifacts
+test-results/
+playwright-report/
+blob-report/
+
+# local config and secrets
+.env
+.env.*
+!.env.example
+*.key
+
+# editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# private sheet music used for local testing (never commit copyrighted scans)
+private-samples/

@@ -1,6 +1,6 @@
 # Musicraft: project plan
 
-> **Status:** draft for review (2026-10-28). Nothing is built yet; this document is what we agree on before building.
+> **Status:** agreed 2026-11-08, implementation in progress. Section 1 records your answers to the open questions.
 
 Musicraft is a web app that turns sheet music (PDFs and phone photos) into an editable digital score, and then lets you change it:
 
@@ -17,12 +17,15 @@ I read "make notifications" in the brief as "make modifications".
 | Topic | Decision |
 |---|---|
 | Hosting | Static web app on Vercel or Netlify, reachable from anywhere. No serverless functions needed. |
-| Access control | API keys you generate on your server. The app keeps the key in your browser and sends it only to your server. The app has no accounts of its own. |
-| AI | Your llama.cpp server (vision-capable, strong reasoning) through its OpenAI-compatible API at `https://linuxllm.ling-escalator.ts.net/v1`. |
-| Recognition (OMR) | A companion Docker container on your server, next to llama.cpp, accepting the same API keys. |
+| Access control | Outside API keys are checked only by your `gateway.py`, the single proxy behind Tailscale Funnel. Behind it, llama-server and the recognition service each accept one internal key that `gateway.py` adds. The app keeps your outside key in your browser and sends it only to your server. The app has no accounts of its own. |
+| Network path | Browser → Tailscale Funnel → `gateway.py` → llama-server (`/v1/…`) or the recognition service (`/omr/…`). No nginx, no router port forwarding. |
+| AI | Your llama.cpp server (vision-capable, strong reasoning) through its OpenAI-compatible API. Nothing is hardcoded: the server URL is entered in the app's settings (or set at deploy time), and the model, its context size and vision support are detected at runtime. |
+| Recognition (OMR) | A companion Docker container on your server, next to llama.cpp, reached through `gateway.py`. |
+| GPU | AMD Radeon Pro W7800, 48 GB VRAM. The recognition container has a ROCm variant; the CPU variant is the default and fallback. |
 | Main input | Piano / grand-staff music. Single-instrument parts like your trumpet part also work. |
 | First arranging target | Small brass ensembles, brass quintet first. |
 | Storage | Browser only (IndexedDB). Project files can be exported and imported to move work between devices. |
+| Testing | I test against a mock OpenAI-compatible server and a stand-in recognition engine. You test against the real server once the app is ready. |
 
 ## 2. Feasibility tests
 
@@ -62,11 +65,24 @@ Percentages are sequence similarity of notes and chords in reading order. Key si
 - Its transposition works, and it produces MIDI plus a time map (which note sounds when) for playback with highlighting.
 - It rendered homr's output without errors.
 
-### 2.4 What this means for the design
+### 2.4 homr after 0.7.0
+
+homr's main branch (5 Nov 2026, not yet released on PyPI) already addresses several gaps found above, according to its changelog:
+
+- multi-measure rests are written as that many bars;
+- dynamics and strong accents (marcato) are recognized;
+- ties are recovered from slurs between notes of the same pitch;
+- multiple voices per staff and triplets printed without their number are handled;
+- PDF input, more robust staff detection on phone photos, and the approximate image position of every note (`<!-- imgpos: x, y -->` comments in the MusicXML);
+- ROCm support through ONNX Runtime's ROCm execution provider (needed for your W7800).
+
+The recognition container therefore installs homr from that pinned commit. I tested the service locally against homr 0.7.0, which has the same command-line interface; installing homr from its Git source isn't permitted in my sandbox, so the pinned version is first exercised when the Docker image is built.
+
+### 2.5 What this means for the design
 
 1. OMR gives a good first draft, not a finished score. The review screen and the editor are core features, not extras.
 2. Cheap automatic checks catch many errors: bars that don't add up, sudden clef or time-signature changes, notes outside an instrument's range.
-3. Post-processing fixes homr's known habits, for example a slur between two notes of the same pitch becomes a tie.
+3. Post-processing fixes homr's known habits where homr itself doesn't yet, for example a slur between two notes of the same pitch becomes a tie.
 4. The vision model fills homr's gaps: text, dynamics, tempo, rehearsal marks, multi-measure rest counts and endings. It also gives a second opinion on time signatures and clefs.
 5. The app uploads full-resolution images and lets you fix the page corners of photos.
 
@@ -82,15 +98,16 @@ flowchart LR
     VRV["Verovio (WebAssembly)<br/>engraving · MIDI · time map"]
     IDB[("IndexedDB<br/>projects · versions · page images")]
   end
-  subgraph S["Your server: public HTTPS + API key"]
-    LLM["llama.cpp<br/>/v1/chat/completions + vision"]
+  subgraph S["Your server, behind Tailscale Funnel"]
+    GW["gateway.py<br/>checks outside API keys"]
+    LLM["llama-server<br/>/v1/chat/completions + vision"]
     OMR["musicraft-omr (Docker)<br/>FastAPI · homr · OpenCV"]
   end
   UI --> CORE --> VRV
   UI <--> IDB
-  UI -->|"chat + tool calls"| LLM
-  UI -->|"pages in, MusicXML out"| OMR
-  OMR -.->|"checks API key"| LLM
+  UI -->|"HTTPS + your API key"| GW
+  GW -->|"/v1/… + internal key"| LLM
+  GW -->|"/omr/… + internal key"| OMR
 ```
 
 ### 3.1 Web app (`apps/web`)
@@ -98,10 +115,10 @@ flowchart LR
 - Vite + React + TypeScript, installable as a PWA (progressive web app) on phones and tablets.
 - Verovio runs as WebAssembly in a background worker. It draws the pages and produces MIDI, the time map, and the SVG used for PDF export.
 - **Editor:** a selection layer over Verovio's SVG, using the shared element IDs. Keyboard-first (MuseScore-like shortcuts) plus a touch palette.
-- **Playback:** Verovio's MIDI played through a SoundFont synthesizer in the browser (for example SpessaSynth), with per-part mute/solo, tempo control and note highlighting.
+- **Playback:** generated directly from the score model and played by a small built-in WebAudio synthesizer, with per-part mute, tempo control and note highlighting. Sampled SoundFont instruments can replace the synthesizer later.
 - **Import:** drag and drop PDFs, images or MusicXML, or use the phone camera. Page thumbnails via pdf.js; corner adjustment for photos.
 - **Storage:** IndexedDB (via Dexie) holds projects, version history, original page images and OMR results. Export and import as a `.musicraft` file: a zip of the score data, MusicXML, images and history.
-- **Settings:** server URLs, API key, model (detected from `/v1/models` and `/props`), and a connection test.
+- **Settings:** server URL, API key, and a connection test. The model, its context size and vision support are detected from `/v1/models` (and `/props` when the gateway forwards it); you can override them if detection is incomplete.
 
 ### 3.2 Score engine (`packages/score-core`)
 
@@ -117,18 +134,19 @@ flowchart LR
 
 ### 3.3 Recognition service (`services/omr`, Docker on your server)
 
-- Python 3.12, FastAPI and homr (ONNX Runtime). It uses CUDA or ROCm if available and the CPU otherwise. homr's models total about 150 MB, small next to an LLM. OpenCV handles image cleanup, PyMuPDF renders PDFs, and pillow-heif reads iPhone photos.
+- Python 3.12, FastAPI and homr (ONNX Runtime). The ROCm image uses your W7800; the CPU image is the default and fallback. homr's models total about 150 MB, small next to an LLM. OpenCV handles image cleanup, pypdfium2 renders PDFs, and pillow-heif reads iPhone photos.
 - **Pipeline:** decode → find the page and correct perspective (corners adjustable in the app) → optional cleanup (deskew, shading) → homr → post-processing (slur → tie, consistency checks) → MusicXML plus image positions of systems, bars and notes. The positions drive the side-by-side review and the image crops sent to the vision model.
 - **API:** `GET /health`, `POST /v1/pages/detect`, `POST /v1/omr/jobs`, `GET /v1/omr/jobs/{id}` (progress and results), `DELETE /v1/omr/jobs/{id}`.
 - **Stateless:** jobs and files are deleted after a few hours. Your browser keeps the project.
-- **Auth:** a Bearer API key. By default the service checks a key by calling your llama.cpp endpoint (`GET /v1/models`) with it and caching the answer, so any key your server already accepts works without extra setup. A key file is the alternative.
+- **Auth:** the same pattern as your llama-server. The service listens only on localhost and accepts one internal key (from a key file). `gateway.py` checks the outside key and forwards `/omr/…` with the internal key.
 - **Limits:** CORS restricted to the app's domain(s), plus upload-size and page-count limits.
 - **Optional second engine:** Audiveris 5.10 (AGPL-3.0, Java), evaluated in M2 on clean PDFs, where it also reads text and dynamics. It is dropped if it adds nothing.
-- **Delivery:** a Docker image (built by CI and published to GitHub Container Registry) plus a `docker compose` file. It is exposed the same way as llama.cpp, for example on the same Tailscale Funnel host under `/omr`.
+- **Delivery:** Dockerfiles (CPU and ROCm) plus `docker compose` files. No Funnel or router changes are needed: `gateway.py` gets one extra route. `docs/SERVER_SETUP.md` lists exactly what that route must do, including the browser's CORS requirements.
 
 ### 3.4 AI assistant
 
-- The browser calls your llama.cpp server directly (`/v1/chat/completions`, streamed). llama.cpp's default CORS reflects the caller's origin; a proxy in front of it must allow the app's origin.
+- The browser calls your server directly (`/v1/chat/completions` through `gateway.py`, streamed). Because the app runs on another domain, `gateway.py` must answer the browser's CORS preflight requests; `docs/SERVER_SETUP.md` spells this out.
+- **Model detection:** `/v1/models` lists the served model(s); vision support comes from its capabilities list or from `/props` (`modalities`), and the context size from `/props` (`n_ctx`). If the gateway doesn't forward `/props`, the app falls back to safe defaults you can override.
 - It uses OpenAI-style tool calling, which works through llama.cpp's Jinja chat templates (on by default). Output constrained to a JSON schema is the fallback for chat templates without tool support.
 - **Agent loop in the browser:**
   1. The model receives a system prompt (role, conventions, notation spec), a compact overview of the score, and your request.
@@ -182,12 +200,13 @@ musicraft/
 ├── apps/web/              React + Vite app (PWA)
 ├── packages/score-core/   score model, MusicXML, transposition, arranging, AI tools (TypeScript)
 ├── services/omr/          FastAPI recognition service + Dockerfile
-├── deploy/                docker compose for your server; Vercel and Netlify config
-├── docs/                  this plan, server setup guide, architecture notes
-└── .github/workflows/     CI: lint, type check, tests, build, Docker image
+├── deploy/                docker compose files for your server
+├── docs/                  this plan, server setup guide
+├── vercel.json, netlify.toml
+└── .github/workflows/     CI: type check, tests, build, Docker image
 ```
 
-Tooling: pnpm workspaces, strict TypeScript, Vitest, Playwright and ESLint/Prettier on the web side; uv, ruff and pytest for Python.
+Tooling: npm workspaces (nothing extra to install), strict TypeScript, Vitest and Playwright on the web side; uv, ruff and pytest for Python.
 
 ## 5. Milestones
 
@@ -210,7 +229,7 @@ M1 comes first because everything builds on the score model. The server half of 
 - **score-core:** unit tests for transposition (every instrument and key), MusicXML round trips on real files (music21 corpus, OpenScore CC0), the AI-notation parser, the checks, and arranging invariants (bar lengths, ranges).
 - **OMR service:** API, auth and job tests. An accuracy benchmark on public-domain pages (clean, photo-like and real scans) is tracked over time; it is informational and does not block merges.
 - **Web:** component tests and Playwright end-to-end tests (import → transpose → export) against a mock OpenAI-compatible server and recorded OMR responses.
-- **Live tests against your server:** done by you, or by me if you make the host reachable from my sandbox (open question 5).
+- **Live tests against your server:** done by you once the app is ready.
 
 ## 7. Risks
 
@@ -224,15 +243,11 @@ M1 comes first because everything builds on the score model. The server half of 
 | GPU contention with llama.cpp | homr's models are about 150 MB; the CPU fallback measured 35–61 s per page |
 | Licensing | The repo is GPL-3.0. homr and Audiveris are AGPL-3.0 and run as a separate service; Verovio is LGPL-3.0. All compatible. |
 
-## 8. Open questions
+## 8. Answers to the open questions (2026-11-08)
 
-1. **API keys:** how does your server issue and check keys (llama-server `--api-key` / `--api-key-file`, or a proxy or gateway in front)? By default the OMR service checks keys by asking your LLM endpoint; tell me if that won't work.
-2. **Outside access:** how is the server reachable from outside the tailnet (Tailscale Funnel, a reverse proxy, something else)? I'd expose the OMR service the same way, for example under `/omr` on the same host.
-3. **Model:** the exact model name and context size, i.e. the output of `GET /v1/models` and `GET /props`.
-4. **Hardware:** GPU type and how much VRAM is free next to the model. homr can use CUDA or ROCm; the CPU also works.
-5. **Live testing from my sandbox:** do you want this? It needs the host publicly reachable, added to this environment's allowed domains, and a dedicated API key stored as an environment secret. Otherwise I test against mocks and you verify against the real server.
-6. Minor, with defaults assumed: Bb trumpets in the quintet template (C is one click away), and configs for both Vercel and Netlify.
-
-## 9. Next step
-
-Once you approve, or adjust, this plan, I start with **M0 + M1** and the **OMR container skeleton**, so you can deploy the app and the container early and test them against your own server.
+1. **API keys:** outside keys are handled only by `gateway.py`. llama-server's `--api-key-file` holds a single internal key so only the gateway and local tools reach the backend. The recognition service follows the same pattern.
+2. **Outside access:** Tailscale Funnel → `gateway.py`. No nginx, no router port forwarding; the router is not ours to configure.
+3. **Model:** detected by the app at runtime, never hardcoded.
+4. **Hardware:** AMD Radeon Pro W7800 with 48 GB VRAM → ROCm image.
+5. **Live testing:** done by you once the app is ready.
+6. Defaults assumed: Bb trumpets in the quintet template (C is one click away), and configs for both Vercel and Netlify.

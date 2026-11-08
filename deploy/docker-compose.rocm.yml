@@ -1,0 +1,14 @@
+# Override for AMD GPUs (ROCm), used together with docker-compose.yml.
+services:
+  musicraft-omr:
+    build:
+      dockerfile: Dockerfile.rocm
+    image: musicraft-omr:rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp=unconfined

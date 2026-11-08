@@ -1,0 +1,23 @@
+{
+  "name": "musicraft",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Digitize, transpose, arrange and edit sheet music with optical music recognition and your own LLM.",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @musicraft/web",
+    "build": "npm run build -w @musicraft/web",
+    "preview": "npm run preview -w @musicraft/web",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "e2e": "npm run e2e -w @musicraft/web"
+  }
+}

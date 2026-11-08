@@ -1,0 +1,39 @@
+# Musicraft recognition service, AMD ROCm build (e.g. Radeon Pro W7800).
+#   docker build -f Dockerfile.rocm -t musicraft-omr:rocm services/omr
+# Run with --device=/dev/kfd --device=/dev/dri --group-add video --group-add render
+# (deploy/docker-compose.rocm.yml does this). Based on homr's own Dockerfile.rocm.
+FROM rocm/dev-ubuntu-24.04:7.0
+
+ARG HOMR_REF=33dd138b0a79a6e513bf2b2e31caddde12c01063
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    LD_LIBRARY_PATH=/opt/rocm/lib
+
+# The onnxruntime-rocm wheel links against these ROCm libraries.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      python3 python3-venv python3-pip git libgl1 libglib2.0-0 \
+      miopen-hip hipfft rccl rocsolver rocblas \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+# The ROCm extra pulls onnxruntime-rocm for Python 3.12 (Ubuntu 24.04's Python).
+RUN pip install "homr[rocm] @ git+https://github.com/liebharc/homr@${HOMR_REF}" \
+ && homr --init
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY musicraft_omr ./musicraft_omr
+RUN pip install .
+
+RUN mkdir -p /tmp/musicraft-omr
+
+ENV MUSICRAFT_OMR_HOST=0.0.0.0 \
+    MUSICRAFT_OMR_PORT=8070
+EXPOSE 8070
+CMD ["musicraft-omr"]

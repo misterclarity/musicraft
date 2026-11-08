@@ -1,0 +1,12 @@
+{
+  "name": "Musicraft",
+  "short_name": "Musicraft",
+  "description": "Digitize, transpose, arrange and edit sheet music.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1c7ed6",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
