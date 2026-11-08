@@ -117,7 +117,14 @@ export function playbackOrder(measures: MeasureInfo[]): number[] {
         jumped = true;
         continue;
       }
+      // Last time through: a new section starts after this bar.
       sectionStart = i + 1;
+      pass = 1;
+    } else if (info.ending?.stop && pass > 1) {
+      // The last ending of a repeated section (its repeat sign was in an earlier ending, skipped
+      // this time): carry on with a new section.
+      sectionStart = i + 1;
+      pass = 1;
     }
     i++;
   }

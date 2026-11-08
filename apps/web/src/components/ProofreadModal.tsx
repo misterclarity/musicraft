@@ -97,7 +97,7 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
         {llm.status === "ready" && vision === false && (
           <Alert color="orange" title="This model can't see images">
             Proofreading needs a vision model (llama-server with an --mmproj file). The detected model, {llm.caps?.model}, has no image
-            input. If it does, switch &ldquo;Images&rdquo; on in Settings.
+            input. If it does, set &ldquo;Vision (images)&rdquo; to on in Settings.
           </Alert>
         )}
         {!pages.length && <Alert color="gray">This score has no scanned pages to compare with.</Alert>}

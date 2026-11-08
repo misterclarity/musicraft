@@ -31,7 +31,7 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
      transpose, move by octaves, add or remove parts, and *Arrange for…* an ensemble (piano → brass
      quintet, quartet, trio, or any list of instruments) as a first draft.
    - Edit by hand: click a note or rest and type. `A`–`G` enter notes, `↑`/`↓` move by semitones,
-     `1`–`7` set lengths, `.` dots, `+` ties, `Delete` makes a rest; the toolbar does the same by touch,
+     `2`–`7` set lengths, `.` dots, `+` ties, `Delete` makes a rest; the toolbar does the same by touch,
      and its `?` button lists every shortcut. *Concert pitch* switches between written and sounding pitch.
    - *Assistant* (✨ in the header): describe the change, e.g. "make this a trumpet in C part and move
      bars 17–24 down an octave". The model works through Musicraft's music tools on a draft; changed

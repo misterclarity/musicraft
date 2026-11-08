@@ -66,8 +66,9 @@ export function exportMidi(score: Score, options: { partIds?: Id[]; expandRepeat
 
   const tracks: number[][] = [track(conductor)];
   const parts = score.parts.filter((p) => !options.partIds || options.partIds.includes(p.id));
+  const channels = midiChannels(parts);
   parts.forEach((part, i) => {
-    const channel = i >= 9 ? (i + 1) % 16 : i; // skip channel 10 (index 9), reserved for drums
+    const channel = channels[i]!;
     const instrument = getInstrument(part.instrument);
     const events: TrackEvent[] = [
       { tick: 0, order: 0, bytes: meta(0x03, text(part.name)) },
@@ -87,4 +88,24 @@ export function exportMidi(score: Score, options: { partIds?: Id[]; expandRepeat
     0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, (tracks.length >> 8) & 0xff, tracks.length & 0xff, (PPQ >> 8) & 0xff, PPQ & 0xff,
   ];
   return new Uint8Array([...header, ...tracks.flat()]);
+}
+
+/** Channels 1–9 and 11–16: channel 10 is reserved for drums in General MIDI. */
+const MELODIC_CHANNELS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15];
+
+/**
+ * A MIDI channel (0-based) for each part. The first 15 parts get their own channel; further parts
+ * share the channel of an earlier part with the same instrument sound when there is one, so that a
+ * program change never turns another part into a different instrument. Never the drum channel.
+ */
+export function midiChannels(parts: readonly { instrument: string }[]): number[] {
+  const programOf = new Map<number, number>();
+  return parts.map((part, i) => {
+    const program = getInstrument(part.instrument).midiProgram;
+    let channel: number;
+    if (i < MELODIC_CHANNELS.length) channel = MELODIC_CHANNELS[i]!;
+    else channel = [...programOf.entries()].find(([, p]) => p === program)?.[0] ?? MELODIC_CHANNELS[i % MELODIC_CHANNELS.length]!;
+    if (!programOf.has(channel)) programOf.set(channel, program);
+    return channel;
+  });
 }

@@ -15,11 +15,15 @@ import {
   pasteMeasures,
   respellNotes,
   setDuration,
+  setDurations,
   setDynamic,
+  setTempo,
   shownPitch,
   toggleArticulation,
   toggleDot,
+  toggleDots,
   toggleTie,
+  toggleTies,
   type MusicEvent,
   type NoteEvent,
   type Score,
@@ -185,5 +189,72 @@ describe("bars", () => {
     // Nearest C to the bass-clef default D3 is C3.
     expect(formatPitch(bass.notes[0]!.pitch)).toBe("C3");
     expect(parsePitch("C3")).toEqual(bass.notes[0]!.pitch);
+  });
+});
+
+describe("edits on several notes and ties", () => {
+  function fourQuarters(): Score {
+    let score = trumpet();
+    let id: string | undefined = events(score)[0]!.id;
+    for (const step of ["C", "D", "E", "F"] as const) {
+      const result = enterNote(score, id!, step, { inputDuration: { type: "quarter", dots: 0 } });
+      score = result.score;
+      id = result.nextEventId;
+    }
+    return score;
+  }
+
+  it("lengthens or dots several selected notes even when one swallows the next", () => {
+    const score = fourQuarters();
+    const ids = events(score).slice(0, 2).map((e) => e.id);
+    // The first note grows over the second, which is then skipped instead of failing the edit.
+    expect(shape(setDurations(score, ids, { type: "half", dots: 0 }))).toEqual(["Bb4/half", "D5/quarter", "Eb5/quarter"]);
+    expect(shape(toggleDots(score, ids))).toEqual(["Bb4/quarter.", "r/eighth", "D5/quarter", "Eb5/quarter"]);
+  });
+
+  it("ties the notes that can be tied and skips the others", () => {
+    let score = trumpet();
+    let id: string | undefined = events(score)[0]!.id;
+    for (const step of ["C", "C", "D", "E"] as const) {
+      const result = enterNote(score, id!, step, { inputDuration: { type: "quarter", dots: 0 } });
+      score = result.score;
+      id = result.nextEventId;
+    }
+    const tied = toggleTies(score, events(score).map((e) => e.id));
+    expect((events(tied)[0] as NoteEvent).notes[0]!.tie).toEqual({ start: true });
+    expect((events(tied)[1] as NoteEvent).notes[0]!.tie).toEqual({ stop: true });
+    expect(() => toggleTies(score, [events(score)[3]!.id])).toThrow("same note");
+  });
+
+  it("removes both ends of a tie when one note moves, and keeps it when both move", () => {
+    const start = trumpet();
+    let entry = enterNote(start, events(start)[0]!.id, "C", { inputDuration: { type: "half", dots: 0 } });
+    entry = enterNote(entry.score, entry.nextEventId!, "C");
+    const score = toggleTie(entry.score, events(entry.score)[0]!.id);
+    const [first, second] = events(score) as NoteEvent[];
+    expect(first!.notes[0]!.tie).toEqual({ start: true });
+    const moved = moveNotes(score, [second!.id], { semitones: 1 });
+    expect((events(moved)[0] as NoteEvent).notes[0]!.tie).toBeUndefined();
+    expect((events(moved)[1] as NoteEvent).notes[0]!.tie).toBeUndefined();
+    expect(checkScore(moved).filter((i) => i.code === "tie-mismatch")).toEqual([]);
+    const both = moveNotes(score, [first!.id, second!.id], { octaves: -1 });
+    expect((events(both)[0] as NoteEvent).notes[0]!.tie).toEqual({ start: true });
+    expect((events(both)[1] as NoteEvent).notes[0]!.tie).toEqual({ stop: true });
+    const deleted = deleteNotes(score, [second!.id]);
+    expect((events(deleted)[0] as NoteEvent).notes[0]!.tie).toBeUndefined();
+  });
+});
+
+describe("deleting bars", () => {
+  it("keeps the final barline when the last bars go, and the opening tempo when the first bar goes", () => {
+    let score = trumpet();
+    expect(score.measures[3]!.barline).toBe("final");
+    const shorter = deleteMeasures(score, 2, 3);
+    expect(shorter.measures.map((m) => m.barline)).toEqual([undefined, "final"]);
+    score = setTempo(score, 0, { bpm: 72, beatUnit: "quarter" });
+    expect(deleteMeasures(score, 0, 0).measures[0]!.tempo).toEqual({ bpm: 72, beatUnit: "quarter" });
+    // A tempo change inside the deleted bars still applies after them.
+    score = setTempo(score, 1, { bpm: 132, beatUnit: "quarter" });
+    expect(deleteMeasures(score, 1, 1).measures[1]!.tempo).toEqual({ bpm: 132, beatUnit: "quarter" });
   });
 });

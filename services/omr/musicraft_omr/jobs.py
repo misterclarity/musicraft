@@ -86,6 +86,8 @@ class JobManager:
         self.lock = threading.Lock()
         self.queue: queue.Queue[str] = queue.Queue()
         self.worker: threading.Thread | None = None
+        # Endpoints run in a thread pool, so two uploads can arrive at once: only one may start the worker.
+        self.worker_lock = threading.Lock()
         settings.workdir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------ public
@@ -161,10 +163,11 @@ class JobManager:
     # ------------------------------------------------------------------ worker
 
     def _ensure_worker(self) -> None:
-        if self.worker and self.worker.is_alive():
-            return
-        self.worker = threading.Thread(target=self._work, name="omr-worker", daemon=True)
-        self.worker.start()
+        with self.worker_lock:
+            if self.worker and self.worker.is_alive():
+                return
+            self.worker = threading.Thread(target=self._work, name="omr-worker", daemon=True)
+            self.worker.start()
 
     def _work(self) -> None:
         while True:

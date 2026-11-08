@@ -6,7 +6,7 @@ const MOCK = "http://localhost:8790";
 const fixture = (name: string) => fileURLToPath(new URL(`../../../packages/score-core/test/fixtures/${name}`, import.meta.url));
 
 /** Point the app at the mock gateway, as a user would in Settings. */
-async function useMockServer(page: Page) {
+async function useMockServer(page: Page, serverUrl = MOCK) {
   await page.addInitScript((url) => {
     localStorage.setItem(
       "musicraft.settings.v1",
@@ -15,7 +15,7 @@ async function useMockServer(page: Page) {
         version: 0,
       }),
     );
-  }, MOCK);
+  }, serverUrl);
 }
 
 async function importFile(page: Page, name: string) {
@@ -160,4 +160,15 @@ test("ships its Content-Security-Policy", async ({ page }) => {
   // Netlify and Vercel also send it as a header, with protection against framing.
   const header = response?.headers()["content-security-policy"];
   if (header) expect(header).toContain("frame-ancestors 'none'");
+});
+
+test("explains when the server doesn't report the model's context size", async ({ page }) => {
+  await useMockServer(page, `${MOCK}/noprops`);
+  await importFile(page, "trumpet-part.musicxml");
+  await page.getByTestId("assistant-toggle").click();
+  await expect(page.getByTestId("context-hint")).toContainText("assumes 16,384 tokens");
+  // The assistant still works.
+  await page.getByTestId("assistant-input").fill("Make this a trumpet in C part");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("assistant-preview")).toBeVisible();
 });

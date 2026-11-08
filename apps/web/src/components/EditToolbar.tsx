@@ -200,7 +200,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
                   ["Alt + ↑ / ↓", "Up / down a step in the key"],
                   ["Ctrl + ↑ / ↓", "Up / down an octave"],
                   ["← / →", "Previous / next note"],
-                  ["1 – 7", "Length: 2 = 32nd, 3 = 16th, 4 = eighth, 5 = quarter, 6 = half, 7 = whole"],
+                  ["2 – 7", "Length: 2 = 32nd, 3 = 16th, 4 = eighth, 5 = quarter, 6 = half, 7 = whole"],
                   [".", "Add or remove a dot"],
                   ["0, Delete", "Turn into a rest"],
                   ["+", "Tie to the next note"],

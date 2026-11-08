@@ -53,9 +53,9 @@ export function mergeScores(scores: Score[]): MergedScore {
         const incoming = next.parts[p];
         let target = draft.parts[p] as Part | undefined;
         if (!target && incoming) {
+          // A part that first appears on this page: empty bars for the earlier pages, then its music.
           target = { ...incoming, measures: Array.from({ length: offset }, () => emptyPartMeasure(incoming.staves)) };
           draft.parts.push(target);
-          continue;
         }
         if (!target) continue;
         if (incoming && incoming.staves > target.staves) setStaffCount(target, incoming.staves);

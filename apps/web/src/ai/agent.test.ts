@@ -1,4 +1,4 @@
-import { newScore, printBars } from "@musicraft/score-core";
+import { getEnsemble, newScore, printBars, writeBars } from "@musicraft/score-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
 import { estimateTokens, fitToContext, runAgent } from "./agent";
@@ -110,7 +110,9 @@ describe("agent loop", () => {
 });
 
 describe("context budget", () => {
-  it("shortens old tool results, then drops earlier turns", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shortens old tool results, then drops earlier turns, and reports where the request now is", () => {
     const big = "x".repeat(4000);
     const messages: ChatMessage[] = [
       { role: "system", content: "sys" },
@@ -123,10 +125,78 @@ describe("context budget", () => {
       { role: "tool", tool_call_id: "3", content: "short" },
     ];
     const before = estimateTokens(messages);
-    expect(fitToContext(messages, [], before - 500, 3)).toBe(true);
+    expect(fitToContext(messages, [], before - 500, 3)).toEqual({ fits: true, keepFrom: 3 });
     expect((messages[5]!.content as string).length).toBeLessThan(300);
-    expect(fitToContext(messages, [], 2000, 3)).toBe(true);
+    expect(fitToContext(messages, [], 2000, 3)).toEqual({ fits: true, keepFrom: 1 });
     expect(messages[1]!.content).toBe("new request");
-    expect(fitToContext(messages, [], 10, 1)).toBe(false);
+    // Called again with the updated index, it never touches the current request.
+    expect(fitToContext(messages, [], 10, 1)).toEqual({ fits: false, keepFrom: 1 });
+    expect(messages[1]!.content).toBe("new request");
+    expect(messages[2]!.tool_calls?.[0]!.id).toBe("1");
+  });
+
+  it("keeps the current request across steps when earlier turns are dropped", async () => {
+    const score = newScore({ title: "Test", parts: [{ instrument: "trumpet-bb" }], measures: 2 });
+    const history: ChatMessage[] = [];
+    for (let i = 0; i < 6; i++) {
+      history.push({ role: "user", content: `old request ${i} ${"y".repeat(2500)}` });
+      history.push({ role: "assistant", content: `old answer ${i}` });
+    }
+    const server = mockServer([
+      [toolCall("a", "get_bars", { from: 1, to: 2 })],
+      [toolCall("b", "get_bars", { from: 1 })],
+      [delta({ content: "Done." }), delta({}, "stop")],
+    ]);
+    const result = await runAgent({ settings, model: null, contextSize: 8192, score, request: "Look at bar 1", history });
+    expect(result.text).toBe("Done.");
+    for (const request of server.requests) {
+      const messages = request.messages;
+      expect(messages.some((m) => typeof m.content === "string" && m.content.includes("Request: Look at bar 1"))).toBe(true);
+      // Every tool result follows the assistant message that asked for it.
+      messages.forEach((m, i) => {
+        if (m.role !== "tool") return;
+        const asked = messages.slice(0, i).some((x) => x.tool_calls?.some((c) => c.id === m.tool_call_id));
+        expect(asked).toBe(true);
+      });
+    }
+    expect(result.transcript[0]!.content).toContain("Request: Look at bar 1");
+  });
+
+  it("works with an unknown context size on a five-part score", async () => {
+    let score = newScore({ title: "Quintet", parts: getEnsemble("brass-quintet")!.parts, measures: 32 });
+    for (let p = 0; p < 5; p++) {
+      const bars = Array.from({ length: 32 }, (_, b) => `bar ${b + 1}: C4/8 D4/8 E4/8 F4/8 G4/8 F4/8 E4/8 D4/8`).join("\n");
+      score = writeBars(score, p, bars).score;
+    }
+    mockServer([[toolCall("a", "get_bars", { from: 1, to: 12 })], [delta({ content: "These bars are a scale." }), delta({}, "stop")]]);
+    const result = await runAgent({ settings, model: null, contextSize: null, score, request: "What do bars 1-12 contain?" });
+    expect(result.text).toBe("These bars are a scale.");
+  });
+
+  it("trims and retries when the server says the request exceeds its context", async () => {
+    const score = newScore({ title: "Test", parts: [{ instrument: "trumpet-bb" }], measures: 2 });
+    const history: ChatMessage[] = [
+      { role: "user", content: `old ${"z".repeat(6000)}` },
+      { role: "assistant", content: "old answer" },
+    ];
+    const bodies: { messages: ChatMessage[] }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(init.body as string));
+        if (bodies.length === 1) {
+          return new Response(
+            JSON.stringify({ error: { code: 400, message: "the request exceeds the available context size, try increasing it", type: "exceed_context_size_error" } }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(sseBody([delta({ content: "Fine." }), delta({}, "stop")]), { headers: { "content-type": "text/event-stream" } });
+      }),
+    );
+    const result = await runAgent({ settings, model: null, contextSize: null, score, request: "Hello", history });
+    expect(result.text).toBe("Fine.");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]!.messages.length).toBeLessThan(bodies[0]!.messages.length);
+    expect(bodies[1]!.messages[1]!.content).toContain("Request: Hello");
   });
 });

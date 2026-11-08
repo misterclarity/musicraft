@@ -14,11 +14,11 @@ import {
   pasteMeasures,
   previousEventId,
   respellNotes,
-  setDuration,
+  setDurations,
   setDynamic,
   toggleArticulation,
-  toggleDot,
-  toggleTie,
+  toggleDots,
+  toggleTies,
   type Articulation,
   type Duration,
   type Dynamic,
@@ -115,8 +115,8 @@ export const editor = {
   duration(duration: Duration) {
     useEditor.getState().setInputDuration(duration);
     run("Change length", (score, selection) => {
-      let next = score;
-      for (const id of selection.eventIds) next = setDuration(next, id, duration);
+      // Notes swallowed by an earlier, longer one are skipped.
+      const next = setDurations(score, selection.eventIds, duration);
       if (next === score && selection.eventIds.length === 1) {
         const ev = eventById(score, selection.eventIds[0]!);
         if (ev && (ev.duration.type !== duration.type || ev.duration.dots !== duration.dots)) {
@@ -128,11 +128,7 @@ export const editor = {
   },
 
   dot() {
-    run("Dot", (score, selection) => {
-      let next = score;
-      for (const id of selection.eventIds) next = toggleDot(next, id);
-      return next;
-    });
+    run("Dot", (score, selection) => toggleDots(score, selection.eventIds));
   },
 
   remove() {
@@ -140,11 +136,7 @@ export const editor = {
   },
 
   tie() {
-    run("Tie", (score, selection) => {
-      let next = score;
-      for (const id of selection.eventIds) next = toggleTie(next, id);
-      return next;
-    });
+    run("Tie", (score, selection) => toggleTies(score, selection.eventIds));
   },
 
   articulation(articulation: Articulation) {

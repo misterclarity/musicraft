@@ -31,35 +31,12 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_CONTEXT } from "../ai/agent";
 import { useAssistant, useLlm, type ChatEntry } from "../ai/assistant";
+import { TOOL_LABELS } from "../ai/labels";
 import type { PageRecord } from "../lib/db";
 import { useSettings } from "../lib/settings";
 import type { Selection } from "../state/project";
-
-const TOOL_LABELS: Record<string, [running: string, done: string]> = {
-  get_overview: ["Looking at the score", "Looked at the score"],
-  get_bars: ["Reading bars", "Read bars"],
-  get_issues: ["Checking for problems", "Checked for problems"],
-  analyze_harmony: ["Analysing the harmony", "Analysed the harmony"],
-  list_instruments: ["Looking up instruments", "Looked up instruments"],
-  transpose: ["Transposing", "Transposed"],
-  change_instrument: ["Changing the instrument", "Changed the instrument"],
-  shift_octave: ["Moving by octaves", "Moved by octaves"],
-  copy_bars: ["Copying bars", "Copied bars"],
-  write_bars: ["Writing bars", "Wrote bars"],
-  set_bar_properties: ["Changing bar settings", "Changed bar settings"],
-  add_dynamics: ["Adding dynamics", "Added dynamics"],
-  add_hairpin: ["Adding a hairpin", "Added a hairpin"],
-  add_text: ["Adding text", "Added text"],
-  set_articulation: ["Setting articulations", "Set articulations"],
-  insert_bars: ["Inserting bars", "Inserted bars"],
-  delete_bars: ["Deleting bars", "Deleted bars"],
-  add_part: ["Adding a part", "Added a part"],
-  remove_part: ["Removing a part", "Removed a part"],
-  rename_part: ["Renaming a part", "Renamed a part"],
-  set_info: ["Setting the title", "Set the title"],
-  look_at_page: ["Looking at the original page", "Looked at the original page"],
-};
 
 function barsOf(args: string): string {
   try {
@@ -185,7 +162,7 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
       <Tooltip
         multiline
         w={260}
-        label={`Model: ${llm.caps.model}\nContext: ${llm.caps.contextSize ? `${llm.caps.contextSize} tokens` : "unknown (8192 assumed)"}\nImages: ${llm.caps.vision === null ? "unknown" : llm.caps.vision ? "yes" : "no"}`}
+        label={`Model: ${llm.caps.model}\nContext: ${llm.caps.contextSize ? `${llm.caps.contextSize} tokens` : `unknown (${DEFAULT_CONTEXT} assumed)`}\nImages: ${llm.caps.vision === null ? "unknown" : llm.caps.vision ? "yes" : "no"}`}
         style={{ whiteSpace: "pre-line" }}
       >
         <Badge variant="light" color="teal" maw={170} style={{ textTransform: "none" }}>
@@ -228,6 +205,18 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
 
       <ScrollArea style={{ flex: 1 }} viewportRef={viewport} px="sm" type="auto">
         <Stack gap="sm" py="sm">
+          {llm.status === "ready" && llm.caps && llm.caps.contextSize === null && (
+            <Alert color="gray" variant="light" title="Context size unknown" data-testid="context-hint">
+              <Text size="sm">
+                Your server didn&apos;t report how much text the model can take at once, so the assistant assumes{" "}
+                {DEFAULT_CONTEXT.toLocaleString("en")} tokens. Set the real size in Settings (llama-server&apos;s <code>-c</code>), or let
+                gateway.py forward <code>/props</code> so it is detected.
+              </Text>
+              <Button size="xs" variant="light" mt="xs" onClick={onOpenSettings}>
+                Settings
+              </Button>
+            </Alert>
+          )}
           {llm.status === "error" && (
             <Alert color="red" variant="light" title="The language model isn't reachable">
               <Text size="sm">{llm.error}</Text>

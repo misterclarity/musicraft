@@ -1,6 +1,6 @@
 import { exportMusicXml, type Id, type Score } from "@musicraft/score-core";
-import { useEffect, useState } from "react";
-import { renderer, screenOptions } from "./renderer";
+import { useEffect, useId, useState } from "react";
+import { renderer, screenOptions, SupersededError } from "./renderer";
 
 export interface RenderedScore {
   svgs: string[];
@@ -14,6 +14,7 @@ export function useRenderedScore(
   options: { concert: boolean; widthPx: number; zoom: number; partIds?: Id[] },
 ): RenderedScore {
   const [state, setState] = useState<RenderedScore>({ svgs: [], loading: true });
+  const slot = `screen-${useId()}`;
   const { concert, widthPx, zoom, partIds } = options;
   const partKey = partIds?.join(",") ?? "";
 
@@ -30,11 +31,13 @@ export function useRenderedScore(
         return;
       }
       renderer
-        .render(xml, screenOptions(widthPx, zoom))
+        .renderLatest(slot, xml, screenOptions(widthPx, zoom))
         .then((svgs) => {
           if (!cancelled) setState({ svgs, loading: false });
         })
         .catch((error: Error) => {
+          // A newer version of the score is on its way.
+          if (error instanceof SupersededError) return;
           if (!cancelled) setState({ svgs: [], loading: false, error: error.message });
         });
     }, 60);
@@ -42,7 +45,7 @@ export function useRenderedScore(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [score, concert, widthPx, zoom, partKey]);
+  }, [score, concert, widthPx, zoom, partKey, slot]);
 
   return state;
 }

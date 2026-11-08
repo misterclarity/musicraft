@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPerformance, checkScore, describeBeats, exportMidi, frac, playbackOrder, type MeasureInfo } from "../src";
+import { buildPerformance, checkScore, describeBeats, exportMidi, frac, midiChannels, playbackOrder, type MeasureInfo } from "../src";
 import { importText, load } from "./helpers";
 
 const part = (bars: string, name = "Trumpet in Bb", time = "<time><beats>4</beats><beat-type>4</beat-type></time>") => `<?xml version="1.0"?>
@@ -80,6 +80,22 @@ describe("playback", () => {
     expect(playbackOrder([m({ repeatEnd: { times: 3 } }), m({})])).toEqual([0, 0, 0, 1]);
   });
 
+  it("starts a new section after the last ending, so later repeats and endings work too", () => {
+    const m = (extra: Partial<MeasureInfo>): MeasureInfo => ({ id: "m", number: "", ...extra });
+    // A |1. B :| 2. C | D |1. E :| 2. F  (as in many marches; no forward repeat sign at D)
+    const measures = [
+      m({}),
+      m({ ending: { number: "1", start: true, stop: true }, repeatEnd: {} }),
+      m({ ending: { number: "2", start: true, stop: true } }),
+      m({}),
+      m({ ending: { number: "1", start: true, stop: true }, repeatEnd: {} }),
+      m({ ending: { number: "2", start: true, stop: true, open: true } }),
+    ];
+    expect(playbackOrder(measures)).toEqual([0, 1, 0, 2, 3, 4, 3, 5]);
+    // Two plain repeated sections.
+    expect(playbackOrder([m({}), m({ repeatEnd: {} }), m({}), m({ repeatEnd: {} })])).toEqual([0, 1, 0, 1, 2, 3, 2, 3]);
+  });
+
   it("merges tied notes and applies tempo and repeats", () => {
     const { score } = load("trumpet-part.musicxml");
     const perf = buildPerformance(score);
@@ -100,5 +116,22 @@ describe("playback", () => {
     expect(midi[11]).toBe(2); // conductor track + one part
     const tracks = String.fromCharCode(...midi).split("MTrk").length - 1;
     expect(tracks).toBe(2);
+  });
+});
+
+describe("MIDI channels", () => {
+  it("never uses the drum channel and shares channels by instrument past 15 parts", () => {
+    const parts = [
+      ...Array.from({ length: 15 }, (_, i) => ({ instrument: i % 2 ? "trombone" : "horn-f" })),
+      { instrument: "trumpet-bb" },
+      { instrument: "trombone" },
+      ...Array.from({ length: 10 }, () => ({ instrument: "tuba" })),
+    ];
+    const channels = midiChannels(parts);
+    expect(channels).not.toContain(9);
+    expect(channels.slice(0, 15)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15]);
+    // The extra trombone shares the first trombone's channel, so no program change clashes.
+    expect(channels[16]).toBe(channels[1]);
+    expect(channels.every((c) => c >= 0 && c <= 15)).toBe(true);
   });
 });

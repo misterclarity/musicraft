@@ -3,15 +3,31 @@ import type { RenderRequest, RenderResponse } from "./verovio.worker";
 type Pending = { resolve: (value: RenderResponse) => void; reject: (error: Error) => void };
 type WithoutId<T> = T extends unknown ? Omit<T, "id"> : never;
 
+/** A screen render that was replaced by a newer one before it started. */
+export class SupersededError extends Error {
+  constructor() {
+    super("A newer render replaced this one.");
+    this.name = "SupersededError";
+  }
+}
+
+interface Slot {
+  busy: boolean;
+  queued?: { xml: string; options: Record<string, unknown>; resolve: (svgs: string[]) => void; reject: (error: Error) => void };
+}
+
 /** Promise-based client for the Verovio worker. One worker is shared by the whole app. */
-class Renderer {
+export class Renderer {
   private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, Pending>();
+  private slots = new Map<string, Slot>();
+
+  constructor(private readonly createWorker: () => Worker = () => new Worker(new URL("./verovio.worker.ts", import.meta.url), { type: "module" })) {}
 
   private ensureWorker(): Worker {
     if (this.worker) return this.worker;
-    const worker = new Worker(new URL("./verovio.worker.ts", import.meta.url), { type: "module" });
+    const worker = this.createWorker();
     worker.onmessage = (event: MessageEvent<RenderResponse>) => {
       const pending = this.pending.get(event.data.id);
       if (!pending) return;
@@ -41,6 +57,35 @@ class Renderer {
   async render(xml: string, options: Record<string, unknown>): Promise<string[]> {
     const response = await this.request<{ id: number; svgs: string[] }>({ kind: "render", xml, options });
     return response.svgs;
+  }
+
+  /**
+   * Render for a view that only needs the newest result (the score on screen). While one render runs,
+   * newer requests replace each other, so the worker never works through outdated versions while the
+   * user types. Replaced requests reject with SupersededError.
+   */
+  renderLatest(key: string, xml: string, options: Record<string, unknown>): Promise<string[]> {
+    let slot = this.slots.get(key);
+    if (!slot) this.slots.set(key, (slot = { busy: false }));
+    slot.queued?.reject(new SupersededError());
+    const queued = slot;
+    return new Promise<string[]>((resolve, reject) => {
+      queued.queued = { xml, options, resolve, reject };
+      this.pump(queued);
+    });
+  }
+
+  private pump(slot: Slot) {
+    if (slot.busy || !slot.queued) return;
+    const job = slot.queued;
+    slot.queued = undefined;
+    slot.busy = true;
+    this.render(job.xml, job.options)
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        slot.busy = false;
+        this.pump(slot);
+      });
   }
 
   async mei(xml: string): Promise<string> {

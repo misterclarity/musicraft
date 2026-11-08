@@ -161,7 +161,10 @@ const server = createServer((req, res) => {
     json(res, 401, { error: { message: "Invalid API key" } });
     return;
   }
-  if (req.method === "GET" && url.pathname === "/v1/models") {
+  // Under /noprops/… the server behaves like a gateway that doesn't forward /props.
+  const noProps = url.pathname.startsWith("/noprops/");
+  const path = noProps ? url.pathname.slice("/noprops".length) : url.pathname;
+  if (req.method === "GET" && path === "/v1/models") {
     json(res, 200, {
       object: "list",
       data: [{ id: "mock-vision-model.gguf", object: "model", owned_by: "llamacpp", meta: { n_ctx_train: 32768 } }],
@@ -169,11 +172,11 @@ const server = createServer((req, res) => {
     });
     return;
   }
-  if (req.method === "GET" && url.pathname === "/props") {
+  if (req.method === "GET" && path === "/props" && !noProps) {
     json(res, 200, { default_generation_settings: { n_ctx: 32768 }, modalities: { vision: true }, build_info: "mock" });
     return;
   }
-  if (OMR_URL && url.pathname.startsWith("/omr/")) {
+  if (OMR_URL && path.startsWith("/omr/")) {
     // Forward to the recognition service with the internal key, as gateway.py does.
     const chunks = [];
     req.on("data", (c) => chunks.push(c));
@@ -181,7 +184,7 @@ const server = createServer((req, res) => {
       try {
         const headers = { Authorization: `Bearer ${OMR_KEY}` };
         if (req.headers["content-type"]) headers["Content-Type"] = req.headers["content-type"];
-        const upstream = await fetch(OMR_URL + url.pathname.slice(4) + url.search, {
+        const upstream = await fetch(OMR_URL + path.slice(4) + url.search, {
           method: req.method,
           headers,
           body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks),
@@ -195,12 +198,12 @@ const server = createServer((req, res) => {
     return;
   }
   // Stand-in recognition service.
-  if (req.method === "POST" && url.pathname === "/omr/v1/pages/detect") {
+  if (req.method === "POST" && path === "/omr/v1/pages/detect") {
     req.resume();
     req.on("end", () => json(res, 200, { corners: null, confidence: 0 }));
     return;
   }
-  if (req.method === "POST" && url.pathname === "/omr/v1/omr/jobs") {
+  if (req.method === "POST" && path === "/omr/v1/omr/jobs") {
     req.resume();
     req.on("end", () => {
       const id = `job${jobs.size + 1}`;
@@ -209,7 +212,7 @@ const server = createServer((req, res) => {
     });
     return;
   }
-  const job = /^\/omr\/v1\/omr\/jobs\/([\w-]+)(\/pages\/(\d+)\/image)?$/.exec(url.pathname);
+  const job = /^\/omr\/v1\/omr\/jobs\/([\w-]+)(\/pages\/(\d+)\/image)?$/.exec(path);
   if (job && jobs.has(job[1])) {
     if (req.method === "DELETE") {
       jobs.delete(job[1]);
@@ -233,11 +236,11 @@ const server = createServer((req, res) => {
     });
     return;
   }
-  if (req.method === "GET" && url.pathname === "/omr/health") {
+  if (req.method === "GET" && path === "/omr/health") {
     json(res, 200, { status: "ok", version: "mock", engine: { name: "mock", available: true, device: "cpu" }, limits: { maxUploadMb: 50, maxPages: 20 } });
     return;
   }
-  if (req.method === "POST" && url.pathname === "/v1/chat/completions") {
+  if (req.method === "POST" && path === "/v1/chat/completions") {
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
@@ -247,7 +250,7 @@ const server = createServer((req, res) => {
     });
     return;
   }
-  json(res, 404, { error: { message: `Not found: ${url.pathname}` } });
+  json(res, 404, { error: { message: `Not found: ${path}` } });
 });
 
 server.listen(port, () => console.log(`mock server on http://localhost:${port}`));

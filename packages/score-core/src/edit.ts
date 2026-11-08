@@ -23,6 +23,7 @@ import {
   type MeasureInfo,
   type MusicEvent,
   type NoteEvent,
+  type Part,
   type PartMeasure,
   type RestEvent,
   type Score,
@@ -105,6 +106,55 @@ function tidyVoice(pm: Draft<PartMeasure>, voiceIndex: number) {
   const isFirst = !pm.voices.some((v, i) => i !== voiceIndex && v.staff === voice.staff && v.voice < voice.voice);
   if (isFirst) voice.events = [measureRest()];
   else pm.voices.splice(voiceIndex, 1);
+}
+
+/**
+ * Remove tie marks that no longer join two equal notes (after a pitch change, a deletion or a new
+ * length), in bars from–to and the bars on either side. Ties to bars outside that window are left alone.
+ */
+function cleanTies(part: Draft<Part>, from: number, to: number): void {
+  const lo = Math.max(0, from - 1);
+  const hi = Math.min(part.measures.length - 1, to + 1);
+  const streams = new Map<string, { ev: Draft<MusicEvent>; m: number }[]>();
+  for (let m = lo; m <= hi; m++) {
+    for (const v of part.measures[m]!.voices) {
+      const key = `${v.staff}/${v.voice}`;
+      let list = streams.get(key);
+      if (!list) streams.set(key, (list = []));
+      for (const e of v.events) if (!(e.kind === "note" && e.grace)) list.push({ ev: e, m });
+    }
+  }
+  const same = (a: Pitch, b: Pitch) => midiNumber(a) === midiNumber(b);
+  for (const list of streams.values()) {
+    list.forEach(({ ev, m }, i) => {
+      if (ev.kind !== "note") return;
+      const next = list[i + 1];
+      const prev = list[i - 1];
+      for (const n of ev.notes) {
+        if (!n.tie) continue;
+        // Judge a start only when the next event is known (inside the window) or the part ends here.
+        if (n.tie.start && (next || m === part.measures.length - 1)) {
+          if (!(next?.ev.kind === "note" && next.ev.notes.some((x) => same(x.pitch, n.pitch)))) delete n.tie.start;
+        }
+        if (n.tie.stop && prev) {
+          if (!(prev.ev.kind === "note" && prev.ev.notes.some((x) => x.tie?.start && same(x.pitch, n.pitch)))) delete n.tie.stop;
+        }
+        if (!n.tie.start && !n.tie.stop) delete n.tie;
+      }
+    });
+  }
+}
+
+/** Bars touched per part, to clean up ties after an edit. */
+class Touched {
+  private readonly ranges = new Map<number, [number, number]>();
+  add(partIndex: number, measureIndex: number) {
+    const r = this.ranges.get(partIndex);
+    this.ranges.set(partIndex, r ? [Math.min(r[0], measureIndex), Math.max(r[1], measureIndex)] : [measureIndex, measureIndex]);
+  }
+  cleanTies(draft: Draft<Score>) {
+    for (const [p, [from, to]] of this.ranges) cleanTies(draft.parts[p]!, from, to);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -242,9 +292,11 @@ export interface PitchMove {
 /** Move notes up or down. When `noteId` is given only that chord tone moves. */
 export function moveNotes(score: Score, ids: Id[], move: PitchMove, view: PitchView = "written"): Score {
   return produce(score, (draft) => {
+    const touched = new Touched();
     for (const id of ids) {
       const at = find(draft as Score, id);
       if (!at) continue;
+      touched.add(at.partIndex, at.measureIndex);
       const ev = draft.parts[at.partIndex]!.measures[at.measureIndex]!.voices[at.voiceIndex]!.events[at.eventIndex]!;
       if (ev.kind !== "note") continue;
       const ctx = viewContext(draft as Score, at.partIndex, at.measureIndex, view);
@@ -260,19 +312,22 @@ export function moveNotes(score: Score, ids: Id[], move: PitchMove, view: PitchV
         }
         if (move.octaves) shown = { ...shown, octave: shown.octave + move.octaves };
         note.pitch = fromView(shown, ctx);
-        delete note.tie;
       }
       ev.notes.sort((a, b) => midiNumber(a.pitch) - midiNumber(b.pitch));
     }
+    // A tie survives when both of its notes moved together; otherwise both ends are removed.
+    touched.cleanTies(draft);
   });
 }
 
 /** Raise or lower notes by a semitone keeping their letter (C → C#, B → Bb). */
 export function alterNotes(score: Score, ids: Id[], delta: 1 | -1, view: PitchView = "written"): Score {
   return produce(score, (draft) => {
+    const touched = new Touched();
     for (const id of ids) {
       const at = find(draft as Score, id);
       if (!at) continue;
+      touched.add(at.partIndex, at.measureIndex);
       const ev = draft.parts[at.partIndex]!.measures[at.measureIndex]!.voices[at.voiceIndex]!.events[at.eventIndex]!;
       if (ev.kind !== "note") continue;
       const ctx = viewContext(draft as Score, at.partIndex, at.measureIndex, view);
@@ -283,6 +338,7 @@ export function alterNotes(score: Score, ids: Id[], delta: 1 | -1, view: PitchVi
         note.pitch = fromView({ ...shown, alter: shown.alter + delta }, ctx);
       }
     }
+    touched.cleanTies(draft);
   });
 }
 
@@ -383,7 +439,16 @@ export function setDuration(score: Score, eventId: Id, duration: Duration): Scor
     // Fill up a bar that is now short.
     const total = voice.events.reduce((t, e) => add(t, eventValue(e as MusicEvent, length)), ZERO);
     if (lt(total, length)) voice.events.push(...fillRests(sub(length, total)));
+    // Notes that were overwritten may have been tied.
+    cleanTies(draft.parts[at.partIndex]!, at.measureIndex, at.measureIndex);
   });
+}
+
+/** Give several events a new length; events swallowed by an earlier, longer one are skipped. */
+export function setDurations(score: Score, ids: Id[], duration: Duration): Score {
+  let next = score;
+  for (const id of ids) if (find(next, id)) next = setDuration(next, id, duration);
+  return next;
 }
 
 /** Add a dot, or remove it if the event already has one. */
@@ -394,13 +459,22 @@ export function toggleDot(score: Score, eventId: Id): Score {
   return setDuration(score, eventId, { ...ev.duration, dots: ev.duration.dots ? 0 : 1 });
 }
 
+/** Add or remove dots on several events; events swallowed by an earlier, longer one are skipped. */
+export function toggleDots(score: Score, ids: Id[]): Score {
+  let next = score;
+  for (const id of ids) if (find(next, id)) next = toggleDot(next, id);
+  return next;
+}
+
 /** Turn notes into rests (or remove one tone from a chord when a chord tone id is given). */
 export function deleteNotes(score: Score, ids: Id[]): Score {
   return produce(score, (draft) => {
     const touched = new Set<string>();
+    const bars = new Touched();
     for (const id of ids) {
       const at = find(draft as Score, id);
       if (!at) continue;
+      bars.add(at.partIndex, at.measureIndex);
       const pm = draft.parts[at.partIndex]!.measures[at.measureIndex]!;
       const voice = pm.voices[at.voiceIndex]!;
       const ev = voice.events[at.eventIndex]!;
@@ -420,6 +494,7 @@ export function deleteNotes(score: Score, ids: Id[]): Score {
       const [p, m, v] = key.split("/").map(Number) as [number, number, number];
       tidyVoice(draft.parts[p]!.measures[m]!, v);
     }
+    bars.cleanTies(draft);
   });
 }
 
@@ -459,6 +534,25 @@ export function toggleTie(score: Score, eventId: Id): Score {
       if (partner?.tie && !partner.tie.start && !partner.tie.stop) delete partner.tie;
     }
   });
+}
+
+/** Tie or untie several notes; notes that can't be tied are skipped unless none can. */
+export function toggleTies(score: Score, ids: Id[]): Score {
+  let next = score;
+  let firstError: EditError | undefined;
+  let done = 0;
+  for (const id of ids) {
+    if (!find(next, id)) continue;
+    try {
+      next = toggleTie(next, id);
+      done++;
+    } catch (error) {
+      if (!(error instanceof EditError)) throw error;
+      firstError ??= error;
+    }
+  }
+  if (!done && firstError) throw firstError;
+  return next;
 }
 
 /** Add an articulation to the notes, or remove it if they all have it already. */
@@ -580,6 +674,7 @@ export function insertMeasures(score: Score, at: number, count = 1): Score {
 export function deleteMeasures(score: Score, from: number, to: number): Score {
   if (to - from + 1 >= score.measures.length) throw new EditError("A score needs at least one bar.");
   const times = score.measures.map((m) => m.time);
+  const tempos = score.measures.map((m) => m.tempo);
   const keys = concertKeys(score);
   return produce(score, (draft) => {
     const after = draft.measures[to + 1];
@@ -589,7 +684,19 @@ export function deleteMeasures(score: Score, from: number, to: number): Score {
       for (let i = to; i >= 0 && !time; i--) time = times[i];
       if (!after.time && time && (from === 0 || to + 1 < draft.measures.length)) after.time = time;
       if (!after.key) after.key = keys[to];
-      if (draft.measures[to]!.barline === "final" && to === draft.measures.length - 1) after.barline = "final";
+      // A tempo marked in the deleted bars (e.g. the opening tempo) still applies afterwards.
+      if (!after.tempo) {
+        for (let i = to; i >= from; i--) {
+          if (tempos[i]) {
+            after.tempo = tempos[i];
+            break;
+          }
+        }
+      }
+    } else if (from > 0 && draft.measures[to]!.barline === "final") {
+      // Deleting the last bars: the new last bar gets the final barline.
+      const last = draft.measures[from - 1]!;
+      if (!last.barline || last.barline === "regular") last.barline = "final";
     }
     draft.measures.splice(from, to - from + 1);
     for (const part of draft.parts) part.measures.splice(from, to - from + 1);

@@ -132,3 +132,35 @@ def test_real_homr(tmp_path: Path):
     page = body["pages"][0]
     assert "<score-partwise" in page["musicxml"]
     assert len(page["staffs"]) >= 2
+
+
+def test_simultaneous_uploads_start_one_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    from musicraft_omr import jobs as jobs_module
+    from musicraft_omr.engine import create_engine
+
+    settings = Settings(engine="fake", workdir=tmp_path)
+    manager = jobs_module.JobManager(settings, create_engine(settings))
+    started: list[str] = []
+    real_thread = threading.Thread
+
+    class SlowThread(real_thread):  # type: ignore[valid-type, misc]
+        """Widens the gap between checking for a worker and starting one, like a busy server."""
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            time.sleep(0.05)
+            super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+
+        def start(self) -> None:
+            started.append(self.name)
+            super().start()
+
+    monkeypatch.setattr(jobs_module.threading, "Thread", SlowThread)
+    barrier = threading.Barrier(8)
+    callers = [real_thread(target=lambda: (barrier.wait(), manager._ensure_worker())) for _ in range(8)]
+    for caller in callers:
+        caller.start()
+    for caller in callers:
+        caller.join()
+    assert started == ["omr-worker"]

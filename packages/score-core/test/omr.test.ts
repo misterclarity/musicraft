@@ -91,3 +91,25 @@ ${note("D", 3, 2, "eighth", 5, 2)}${note("E", 3, 4, "quarter", 5, 2)}
     expect(marked.measures.map((m) => m.number)).toEqual(["0", "1"]);
   });
 });
+
+describe("merging pages with different parts", () => {
+  const twoParts = `<?xml version="1.0"?>
+<score-partwise version="4.0"><part-list>
+<score-part id="P1"><part-name>Trumpet</part-name></score-part><score-part id="P2"><part-name>Trombone</part-name></score-part></part-list>
+<part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>2</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+<note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><type>half</type></note></measure></part>
+<part id="P2"><measure number="1"><attributes><divisions>1</divisions><time><beats>2</beats><beat-type>4</beat-type></time><clef><sign>F</sign><line>4</line></clef></attributes>
+<note><pitch><step>C</step><octave>3</octave></pitch><duration>2</duration><type>half</type></note></measure></part></score-partwise>`;
+
+  it("keeps the music of a part that only starts on a later page", () => {
+    const a = importText(page(n("C") + n("D"))).score;
+    const b = importText(twoParts).score;
+    const { score } = mergeScores([a, b]);
+    expect(score.measures).toHaveLength(3);
+    expect(score.parts).toHaveLength(2);
+    for (const part of score.parts) expect(part.measures).toHaveLength(3);
+    const lastBar = score.parts[1]!.measures[2]!.voices[0]!.events[0] as NoteEvent;
+    expect(formatPitch(lastBar.notes[0]!.pitch)).toBe("C3");
+    expect(score.parts[1]!.measures[0]!.voices.every((v) => v.events.every((e) => e.kind === "rest"))).toBe(true);
+  });
+});

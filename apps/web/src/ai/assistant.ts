@@ -20,7 +20,7 @@ import { detectLlm, type LlmCapabilities } from "../lib/server";
 import { getSettings, isServerConfigured, type Settings } from "../lib/settings";
 import { useProject, type Selection } from "../state/project";
 import { AgentError, compactTurn, runAgent, type BrowserTool } from "./agent";
-import type { ChatMessage } from "./llm";
+import type { ChatMessage, ToolCall } from "./llm";
 import { lookAtPageTool } from "./vision";
 
 // ---------------------------------------------------------------------------
@@ -87,6 +87,8 @@ export type ChatEntry =
 
 interface AssistantState {
   projectId: string | null;
+  /** Changes on every reset, so a request that was stopped by a reset can't write into the new chat. */
+  session: number;
   entries: ChatEntry[];
   history: ChatMessage[];
   running: boolean;
@@ -158,6 +160,7 @@ function push(entry: ChatEntry) {
 
 export const useAssistant = create<AssistantState>()((set, get) => ({
   projectId: null,
+  session: 0,
   entries: [],
   history: [],
   running: false,
@@ -168,7 +171,7 @@ export const useAssistant = create<AssistantState>()((set, get) => ({
 
   reset(projectId) {
     get().controller?.abort();
-    set({ projectId, entries: [], history: [], running: false, controller: null, base: null, draft: null, changes: [] });
+    set({ projectId, session: get().session + 1, entries: [], history: [], running: false, controller: null, base: null, draft: null, changes: [] });
   },
 
   async send(text, options = {}) {
@@ -176,10 +179,19 @@ export const useAssistant = create<AssistantState>()((set, get) => ({
     if (!request || get().running) return;
     const projectScore = useProject.getState().score;
     if (!projectScore) return;
+    // Everything below writes only while the chat is still the one this request started in.
+    const session = get().session;
+    const live = () => get().session === session;
+    const guard =
+      <A extends unknown[]>(fn: (...args: A) => void) =>
+      (...args: A) => {
+        if (live()) fn(...args);
+      };
     push({ kind: "user", id: nextId(), text: request });
     const controller = new AbortController();
     set({ running: true, controller });
     const caps = await useLlm.getState().detect();
+    if (!live()) return;
     if (!caps) {
       push({ kind: "error", id: nextId(), text: useLlm.getState().error ?? "The language model is not available." });
       set({ running: false, controller: null });
@@ -213,9 +225,9 @@ export const useAssistant = create<AssistantState>()((set, get) => ({
           onStep: () => {
             current = null;
           },
-          onContent: (delta) => update(ensureTurn(), (e) => (e.kind === "assistant" ? { ...e, text: e.text + delta } : e)),
-          onReasoning: (delta) => update(ensureTurn(), (e) => (e.kind === "assistant" ? { ...e, reasoning: e.reasoning + delta } : e)),
-          onTurnText: (turnText) => {
+          onContent: guard((delta: string) => update(ensureTurn(), (e) => (e.kind === "assistant" ? { ...e, text: e.text + delta } : e))),
+          onReasoning: guard((delta: string) => update(ensureTurn(), (e) => (e.kind === "assistant" ? { ...e, reasoning: e.reasoning + delta } : e))),
+          onTurnText: guard((turnText: string) => {
             if (!current) return;
             const id = current;
             const entry = get().entries.find((e) => e.id === id);
@@ -223,27 +235,37 @@ export const useAssistant = create<AssistantState>()((set, get) => ({
               set({ entries: get().entries.filter((e) => e.id !== id) });
             } else update(id, (e) => (e.kind === "assistant" ? { ...e, text: turnText.trim(), streaming: false } : e));
             current = null;
-          },
-          onToolStart: (call) => push({ kind: "tool", id: call.id, name: call.function.name, args: call.function.arguments, status: "running" }),
-          onToolEnd: (call, outcome) =>
+          }),
+          onToolStart: guard((call: ToolCall) => push({ kind: "tool", id: call.id, name: call.function.name, args: call.function.arguments, status: "running" })),
+          onToolEnd: guard((call: ToolCall, outcome: { result: string; error?: boolean; summary?: string }) =>
             update(call.id, (e) => (e.kind === "tool" ? { ...e, status: outcome.error ? "error" : "done", result: outcome.result, summary: outcome.summary } : e)),
-          onDraft: (score, summary) =>
-            set((s) => ({ draft: score, base: s.base ?? projectScore, changes: [...s.changes, summary] })),
+          ),
+          onDraft: guard((score: Score, summary: string) => set((s) => ({ draft: score, base: s.base ?? projectScore, changes: [...s.changes, summary] }))),
         },
       );
+      if (!live()) return;
       set((s) => ({ history: [...s.history, ...compactTurn(request, result.text, result.changes)].slice(-24) }));
       if (result.stoppedAt) push({ kind: "notice", id: nextId(), text: result.text });
     } catch (err) {
+      if (!live()) return;
       const aborted = (err as Error).name === "AbortError" || controller.signal.aborted;
       if (aborted) push({ kind: "notice", id: nextId(), text: "Stopped." });
       else push({ kind: "error", id: nextId(), text: err instanceof AgentError ? err.message : (err as Error).message || String(err) });
       set((s) => ({ history: [...s.history, ...compactTurn(request, aborted ? "(stopped by the user)" : "(failed)", [])].slice(-24) }));
     } finally {
-      set((s) => ({
-        running: false,
-        controller: null,
-        entries: s.entries.map((e) => (e.kind === "assistant" && e.streaming ? { ...e, streaming: false } : e.kind === "tool" && e.status === "running" ? { ...e, status: "error", result: "Interrupted." } : e)),
-      }));
+      if (live()) {
+        set((s) => ({
+          running: false,
+          controller: null,
+          entries: s.entries.map((e) =>
+            e.kind === "assistant" && e.streaming
+              ? { ...e, streaming: false }
+              : e.kind === "tool" && e.status === "running"
+                ? { ...e, status: "error", result: "Interrupted." }
+                : e,
+          ),
+        }));
+      }
     }
   },
 
