@@ -271,6 +271,8 @@ export const useAssistant = create<AssistantState>()((set, get) => ({
       }
       return { draft: null, base: null, changes: [], history };
     });
+    // The selection may point at notes that only existed in the draft.
+    useProject.getState().select({ eventIds: [] });
     push({ kind: "notice", id: nextId(), text: "Changes discarded." });
   },
 }));

@@ -124,10 +124,20 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
     [project],
   );
 
+  // While the assistant's draft is on screen, undo means "discard the draft".
+  const undo = () => {
+    const ai = useAssistant.getState();
+    if (ai.running) return;
+    if (ai.draft) ai.discard();
+    else project.undo();
+  };
+  const redo = () => {
+    if (!previewActive()) project.redo();
+  };
   useHotkeys([
-    ["mod+Z", () => project.undo()],
-    ["mod+shift+Z", () => project.redo()],
-    ["mod+Y", () => project.redo()],
+    ["mod+Z", undo],
+    ["mod+shift+Z", redo],
+    ["mod+Y", redo],
     ["Escape", () => project.select(EMPTY_SELECTION)],
   ]);
 
@@ -200,13 +210,13 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
             </UnstyledButton>
           </Group>
           <Group gap={6} wrap="nowrap">
-            <Tooltip label={lastLabel ? `Undo: ${lastLabel}` : "Nothing to undo"}>
-              <ActionIcon variant="subtle" disabled={!project.past.length} onClick={project.undo} aria-label="Undo">
+            <Tooltip label={assistant.draft ? "Undo: discard the assistant's changes" : lastLabel ? `Undo: ${lastLabel}` : "Nothing to undo"}>
+              <ActionIcon variant="subtle" disabled={(!project.past.length && !assistant.draft) || assistant.running} onClick={undo} aria-label="Undo">
                 <IconArrowBackUp size={18} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={nextLabel ? `Redo: ${nextLabel}` : "Nothing to redo"}>
-              <ActionIcon variant="subtle" disabled={!project.future.length} onClick={project.redo} aria-label="Redo">
+              <ActionIcon variant="subtle" disabled={!project.future.length || !!assistant.draft || assistant.running} onClick={redo} aria-label="Redo">
                 <IconArrowForwardUp size={18} />
               </ActionIcon>
             </Tooltip>
@@ -293,7 +303,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
               <HistoryPanel
                 projectId={projectId}
                 tick={project.versionsTick}
-                onRestore={(restored, label) => project.apply(restored, label, { checkpoint: true })}
+                onRestore={(restored, label) => apply(restored, label, true)}
                 onSave={(label) => project.saveVersion(label)}
               />
             </Tabs.Panel>

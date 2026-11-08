@@ -138,3 +138,17 @@ test("arranges a piano piece for brass quintet as a new score", async ({ page })
   await expect(page.getByTestId("part-card")).toHaveCount(5);
   await expect(page.getByTestId("part-card").nth(4)).toContainText("Tuba");
 });
+
+test("undo while previewing discards the assistant's changes", async ({ page }) => {
+  await useMockServer(page);
+  await importFile(page, "trumpet-part.musicxml");
+  await page.getByTestId("assistant-toggle").click();
+  await page.getByTestId("assistant-input").fill("Make this a trumpet in C part");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("assistant-preview")).toBeVisible();
+  await page.locator(".score-view").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("Control+z");
+  await expect(page.getByTestId("assistant-preview")).toHaveCount(0);
+  await expect(page.getByTestId("assistant-panel")).toContainText("Changes discarded.");
+  await expect(page.getByTestId("part-card").first()).toContainText("Trumpet in B♭");
+});
