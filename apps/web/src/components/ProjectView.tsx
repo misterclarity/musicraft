@@ -3,6 +3,7 @@ import {
   AppShell,
   Badge,
   Burger,
+  Button,
   Center,
   Group,
   Loader,
@@ -45,6 +46,7 @@ import { IssuesPanel } from "./IssuesPanel";
 import { OriginalPages } from "./OriginalPages";
 import { PartsPanel } from "./PartsPanel";
 import { PlaybackBar } from "./PlaybackBar";
+import { ProofreadModal } from "./ProofreadModal";
 import { ScoreView, type MeasureMark } from "./ScoreView";
 
 export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: string; onBack: () => void; onOpenSettings: () => void }) {
@@ -57,6 +59,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const [showOriginal, setShowOriginal] = useState(true);
   const [mobileView, setMobileView] = useState<"score" | "original">("score");
   const [barDialog, setBarDialog] = useState<BarDialog | null>(null);
+  const [proofreadOpen, setProofreadOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(() => {
     try {
       return localStorage.getItem("musicraft.assistantOpen") === "1";
@@ -278,6 +281,11 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
               />
             </Tabs.Panel>
             <Tabs.Panel value="issues">
+              {pages.length > 0 && (
+                <Button size="xs" variant="light" fullWidth mb="sm" leftSection={<IconSparkles size={14} />} onClick={() => setProofreadOpen(true)}>
+                  Proofread against the original with AI
+                </Button>
+              )}
               <IssuesPanel issues={issues} onJump={jump} />
             </Tabs.Panel>
             <Tabs.Panel value="history">
@@ -351,6 +359,16 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
       <AppShell.Aside>
         {assistantOpen && <AssistantPanel score={shown} selection={project.selection} pages={pages} onOpenSettings={onOpenSettings} />}
       </AppShell.Aside>
+      <ProofreadModal
+        opened={proofreadOpen}
+        onClose={() => setProofreadOpen(false)}
+        pages={pages}
+        onShow={(measureIndex, partId) => {
+          setProofreadOpen(false);
+          project.select({ eventIds: [], measures: { from: measureIndex, to: measureIndex }, partIds: partId ? [partId] : [] });
+          setFocus(measureIndex);
+        }}
+      />
       <BarDialogs
         dialog={barDialog}
         score={score}

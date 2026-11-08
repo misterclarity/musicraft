@@ -1,15 +1,18 @@
-// A stand-in for gateway.py + llama-server (and the recognition service) for end-to-end tests.
-// It speaks the OpenAI chat API with streaming and tool calls, chosen by keywords in the request.
+// A stand-in for gateway.py + llama-server for end-to-end tests. It speaks the OpenAI chat API with
+// streaming and tool calls, chosen by keywords in the request, and answers proofreading requests.
+// With MOCK_OMR_URL set it forwards /omr/... to a real recognition service, like gateway.py does.
 // Usage: node e2e/mock-server.mjs [port]
 import { createServer } from "node:http";
 
 const port = Number(process.argv[2] ?? process.env.MOCK_PORT ?? 8790);
 const KEY = process.env.MOCK_API_KEY ?? "test-key";
+const OMR_URL = process.env.MOCK_OMR_URL;
+const OMR_KEY = process.env.MOCK_OMR_KEY ?? "internal-test-key";
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
 }
 
 function json(res, status, body) {
@@ -56,8 +59,24 @@ function lastUserText(messages) {
   return "";
 }
 
+/** Proofreading: report the first note of the line an octave off, and a missing dynamic. */
+function proofread(messages) {
+  const user = messages[messages.length - 1];
+  const parts = Array.isArray(user?.content) ? user.content : [];
+  const textPart = parts.find((p) => p.type === "text")?.text ?? "";
+  if (!parts.some((p) => p.type === "image_url" && p.image_url.url.startsWith("data:image/"))) return text('{"findings": [], "missing": []}');
+  const line = textPart.split("\n").find((l) => /^bar \S+( staff 1)?: /.test(l) && /[A-G]/.test(l.split(": ")[1]));
+  if (!line) return text('{"findings": [], "missing": []}');
+  const bar = /^bar (\S+)/.exec(line)[1];
+  const fixed = line.replace(/([A-G](?:#|b|x|bb)?)(\d)/, (_m, note, octave) => `${note}${Math.min(8, Number(octave) + 1)}`);
+  const answer = { findings: [{ part: "P1", bar, problem: "The first note is an octave higher in the original.", fix: fixed.replace(/^bar \S+ staff 1:/, `bar ${bar} staff 1:`) }], missing: [{ part: "P1", bar, beat: 1, kind: "dynamic", value: "mf" }] };
+  return text(JSON.stringify(answer));
+}
+
 function respond(body) {
   const messages = body.messages ?? [];
+  const system = typeof messages[0]?.content === "string" ? messages[0].content : "";
+  if (system.startsWith("You check the work of an optical music recognition program")) return proofread(messages);
   const last = messages[messages.length - 1];
   const request = (/Request: ([\s\S]*)$/.exec(lastUserText(messages))?.[1] ?? "").toLowerCase();
   if (last?.role === "tool" || (last?.role === "user" && Array.isArray(last.content))) {
@@ -94,6 +113,27 @@ const server = createServer((req, res) => {
   }
   if (req.method === "GET" && url.pathname === "/props") {
     json(res, 200, { default_generation_settings: { n_ctx: 32768 }, modalities: { vision: true }, build_info: "mock" });
+    return;
+  }
+  if (OMR_URL && url.pathname.startsWith("/omr/")) {
+    // Forward to the recognition service with the internal key, as gateway.py does.
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", async () => {
+      try {
+        const headers = { Authorization: `Bearer ${OMR_KEY}` };
+        if (req.headers["content-type"]) headers["Content-Type"] = req.headers["content-type"];
+        const upstream = await fetch(OMR_URL + url.pathname.slice(4) + url.search, {
+          method: req.method,
+          headers,
+          body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks),
+        });
+        res.writeHead(upstream.status, { "Content-Type": upstream.headers.get("content-type") ?? "application/octet-stream" });
+        res.end(Buffer.from(await upstream.arrayBuffer()));
+      } catch (err) {
+        json(res, 502, { error: { message: `Recognition service unreachable: ${err.message}` } });
+      }
+    });
     return;
   }
   if (req.method === "GET" && url.pathname === "/omr/health") {
