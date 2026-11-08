@@ -230,6 +230,46 @@ export function intervalToKey(from: KeySignature, to: KeySignature, direction: "
   return iv;
 }
 
+/**
+ * Spell a MIDI pitch for a key: notes of the key first, then naturals, then sharps (going up) or
+ * flats (going down).
+ */
+export function spellMidi(midi: number, keyFifths: number, prefer: "sharp" | "flat" = "sharp"): Pitch {
+  const alterations = keyAlterations(keyFifths);
+  const octaveGuess = Math.floor(midi / 12) - 1;
+  let best: Pitch | undefined;
+  let bestScore = Infinity;
+  for (const step of STEPS) {
+    for (let octave = octaveGuess - 1; octave <= octaveGuess + 1; octave++) {
+      const alter = midi - midiNumber({ step, alter: 0, octave });
+      if (Math.abs(alter) > 2) continue;
+      let score: number;
+      if (alter === alterations[step]) score = 0;
+      else if (alter === 0) score = 1;
+      else if ((alter > 0 && prefer === "sharp") || (alter < 0 && prefer === "flat")) score = Math.abs(alter) === 1 ? 2 : 6;
+      else score = Math.abs(alter) === 1 ? 3 : 7;
+      if (score < bestScore) {
+        best = { step, alter, octave };
+        bestScore = score;
+      }
+    }
+  }
+  return best!;
+}
+
+/** Other spellings of the same sound (C# → Db → B##…), at most double sharps/flats. */
+export function enharmonics(p: Pitch): Pitch[] {
+  const midi = midiNumber(p);
+  const result: Pitch[] = [];
+  for (const step of STEPS) {
+    for (let octave = p.octave - 1; octave <= p.octave + 1; octave++) {
+      const alter = midi - midiNumber({ step, alter: 0, octave });
+      if (Math.abs(alter) <= 2) result.push({ step, alter, octave });
+    }
+  }
+  return result.sort((a, b) => Math.abs(a.alter) - Math.abs(b.alter) || diatonicNumber(a) - diatonicNumber(b));
+}
+
 const SHARP_ORDER: Step[] = ["F", "C", "G", "D", "A", "E", "B"];
 const FLAT_ORDER: Step[] = ["B", "E", "A", "D", "G", "C", "F"];
 

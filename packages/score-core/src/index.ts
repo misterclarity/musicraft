@@ -12,6 +12,7 @@ export * from "./performance";
 export * from "./midi";
 export * from "./ops";
 export * from "./omr";
+export * from "./edit";
 export { importMusicXml, importMxl, importMusicFile, type ImportOptions, type ImportResult } from "./musicxml/import";
 export {
   exportMusicXml,

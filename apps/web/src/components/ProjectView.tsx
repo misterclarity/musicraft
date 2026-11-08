@@ -28,9 +28,12 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PageRecord } from "../lib/db";
 import { describeSelection } from "../lib/describe";
+import { handleEditorKey } from "../lib/editor";
 import { listPages } from "../lib/projects";
 import { modals } from "../lib/modals";
 import { EMPTY_SELECTION, useProject } from "../state/project";
+import { BarDialogs, type BarDialog } from "./BarDialogs";
+import { EditToolbar } from "./EditToolbar";
 import { ExportMenu } from "./ExportMenu";
 import { HistoryPanel } from "./HistoryPanel";
 import { IssuesPanel } from "./IssuesPanel";
@@ -48,6 +51,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const [pages, setPages] = useState<PageRecord[]>([]);
   const [showOriginal, setShowOriginal] = useState(true);
   const [mobileView, setMobileView] = useState<"score" | "original">("score");
+  const [barDialog, setBarDialog] = useState<BarDialog | null>(null);
   const narrow = useMediaQuery("(max-width: 62em)");
 
   useEffect(() => {
@@ -90,6 +94,15 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
     ["mod+Y", () => project.redo()],
     ["Escape", () => project.select(EMPTY_SELECTION)],
   ]);
+
+  // Note entry and editing keys (see the shortcut list in the edit toolbar).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.defaultPrevented && handleEditorKey(event)) event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (missing) {
     return (
@@ -230,6 +243,9 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
       </AppShell.Navbar>
 
       <AppShell.Main style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+          <EditToolbar selection={project.selection} onBarDialog={setBarDialog} />
+        </div>
         {pages.length > 0 && narrow && (
           <SegmentedControl
             size="xs"
@@ -280,6 +296,14 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
           </Text>
         </Group>
       </AppShell.Main>
+      <BarDialogs
+        dialog={barDialog}
+        score={score}
+        selection={project.selection}
+        concert={project.concert}
+        onClose={() => setBarDialog(null)}
+        onApply={(next, label) => project.apply(next, label)}
+      />
     </AppShell>
   );
 }
