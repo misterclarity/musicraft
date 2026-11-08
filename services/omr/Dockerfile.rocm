@@ -23,8 +23,13 @@ RUN python3 -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 
 # The ROCm extra pulls onnxruntime-rocm for Python 3.12 (Ubuntu 24.04's Python).
+# homr's own downloader times out after 5 s; fetch the models patiently first, then let
+# `homr --init` verify that everything is in place.
+COPY scripts/fetch_homr_models.py /tmp/fetch_homr_models.py
 RUN pip install "homr[rocm] @ git+https://github.com/liebharc/homr@${HOMR_REF}" \
- && homr --init
+ && python /tmp/fetch_homr_models.py --gpu \
+ && homr --init \
+ && rm /tmp/fetch_homr_models.py
 
 WORKDIR /app
 COPY pyproject.toml README.md ./

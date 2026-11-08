@@ -15,8 +15,13 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git libgl1 libglib2.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
+# homr's own downloader times out after 5 s; fetch the models patiently first, then let
+# `homr --init` verify that everything is in place.
+COPY scripts/fetch_homr_models.py /tmp/fetch_homr_models.py
 RUN pip install "homr[cpu] @ git+https://github.com/liebharc/homr@${HOMR_REF}" \
- && homr --init
+ && python /tmp/fetch_homr_models.py \
+ && homr --init \
+ && rm /tmp/fetch_homr_models.py
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
