@@ -1,7 +1,7 @@
 import { newScore, printBars, writeBars } from "@musicraft/score-core";
 import { describe, expect, it } from "vitest";
 import type { PageRecord } from "../lib/db";
-import { applyFinding, describeSystem, extractJson, parseFindings } from "./proofread";
+import { applyFinding, describeSystem, extractJson, findingBar, parseFindings } from "./proofread";
 import { pageSystems } from "./vision";
 
 function trumpetScore() {
@@ -29,7 +29,7 @@ const page: PageRecord = {
 
 describe("lines of music on the pages", () => {
   it("splits pages into systems with their bars and a padded box", () => {
-    const systems = pageSystems([page], 8);
+    const systems = pageSystems([page], trumpetScore());
     expect(systems.map((s) => s.measures)).toEqual([
       [0, 3],
       [4, 7],
@@ -41,7 +41,7 @@ describe("lines of music on the pages", () => {
 
   it("describes the recognised bars at written pitch", () => {
     const score = trumpetScore();
-    const text = describeSystem(score, pageSystems([page], 8)[0]!);
+    const text = describeSystem(score, pageSystems([page], trumpetScore())[0]!);
     expect(text).toContain("Recognised bars 1–4 (time 4/4, concert key Bb major)");
     expect(text).toContain('# P1 "Trumpet in Bb" (Trumpet in Bb, written key C major), written pitch:');
     expect(text).toContain("bar 1: E5/2 D5/4 r/4");
@@ -51,7 +51,7 @@ describe("lines of music on the pages", () => {
 describe("findings", () => {
   it("reads the model's JSON, keeping only valid findings inside the line", () => {
     const score = trumpetScore();
-    const system = pageSystems([page], 8)[0]!;
+    const system = pageSystems([page], trumpetScore())[0]!;
     const answer = extractJson(
       'Here you go:\n```json\n{"findings": [' +
         '{"part": "P1", "bar": "1", "problem": "the second note is F5", "fix": "bar 1: E5/2 F5/4 r/4"},' +
@@ -69,7 +69,7 @@ describe("findings", () => {
 
   it("applies fixes and missed markings, and refuses fixes that don't fit", () => {
     let score = trumpetScore();
-    const system = pageSystems([page], 8)[0]!;
+    const system = pageSystems([page], trumpetScore())[0]!;
     const [fix, short, dynamic] = parseFindings(score, system, {
       findings: [
         { bar: 1, problem: "x", fix: "bar 1: E5/2 F5/4 r/4" },
@@ -81,8 +81,33 @@ describe("findings", () => {
     expect(() => applyFinding(score, short!)).toThrow(/missing 2 beats/);
     score = applyFinding(score, dynamic!).score;
     expect(printBars(score, 0, 0, 0, "written")).toEqual(["bar 1: E5/2 F5/4(mf) r/4"]);
-    const tempo = applyFinding(score, { id: "t", partIndex: 0, measureIndex: 0, kind: "tempo", problem: "", value: "Allegro quarter = 132" }).score;
+    const tempo = applyFinding(score, { id: "t", partIndex: 0, measureIndex: 0, measureId: score.measures[0]!.id, kind: "tempo", problem: "", value: "Allegro quarter = 132" }).score;
     expect(tempo.measures[0]!.tempo).toMatchObject({ bpm: 132, text: "Allegro" });
+  });
+
+  it("reads multi-bar rests from the image and keeps later fixes on the right bar", () => {
+    let score = trumpetScore();
+    const [system] = pageSystems([page], score);
+    // Bar 3 is a rest bar; bar 1 has notes, so a multi-bar rest there is ignored.
+    const findings = parseFindings(score, system!, {
+      findings: [{ bar: 4, problem: "the rest is a half note", fix: "bar 4: C5/2 r/2" }],
+      missing: [
+        { bar: 3, kind: "multirest", value: 7 },
+        { bar: 1, kind: "multi-bar rest", value: "4" },
+      ],
+    });
+    expect(findings.map((f) => [f.kind, f.measureIndex, f.fix ?? f.value])).toEqual([
+      ["notes", 3, "bar 4: C5/2 r/2"],
+      ["multirest", 2, "7"],
+    ]);
+    const [fix, rest] = findings;
+    score = applyFinding(score, rest!).score;
+    expect(score.measures).toHaveLength(14);
+    // The old bar 4 is now bar 10: the fix goes there, not to the new bar 4.
+    expect(findingBar(score, fix!)).toBe(9);
+    score = applyFinding(score, fix!).score;
+    expect(printBars(score, 0, 9, 9, "written")).toEqual(["bar 10: C5/2 r/2"]);
+    expect(printBars(score, 0, 3, 3, "written")).toEqual(["bar 4: R"]);
   });
 
   it("explains answers that are not JSON", () => {

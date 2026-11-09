@@ -23,4 +23,5 @@ export const TOOL_LABELS: Record<string, [running: string, done: string]> = {
   set_info: ["Setting the title", "Set the title"],
   look_at_page: ["Looking at the original page", "Looked at the original page"],
   arrange: ["Arranging for the ensemble", "Arranged for the ensemble"],
+  multi_bar_rest: ["Setting a multi-bar rest", "Set a multi-bar rest"],
 };

@@ -17,6 +17,8 @@ import {
   runTool,
   SCORE_TOOLS,
   timeSignatures,
+  expandMultiRest,
+  isRestBar,
   writeBars,
   writtenContexts,
   type Score,
@@ -26,11 +28,14 @@ import type { Settings } from "../lib/settings";
 import { streamChat, type ChatMessage } from "./llm";
 import { cropPage, pageSystems, type SystemCrop } from "./vision";
 
-export type FindingKind = "notes" | "dynamic" | "text" | "tempo" | "rehearsal";
+export type FindingKind = "notes" | "dynamic" | "text" | "tempo" | "rehearsal" | "multirest";
 
 export interface Finding {
   id: string;
   partIndex: number;
+  /** The bar, by id: findings stay attached to it when other fixes add or remove bars. */
+  measureId: string;
+  /** Where the bar was when the finding was made (see findingBar for where it is now). */
   measureIndex: number;
   kind: FindingKind;
   problem: string;
@@ -41,12 +46,12 @@ export interface Finding {
 }
 
 export const PROOFREAD_PROMPT = `You check the work of an optical music recognition program. You get an image of one line of printed music and the notes the program recognised, in MCN notation, at written pitch (as printed).
-Compare them bar by bar. Report only differences you can actually see in the image: wrong pitches or accidentals, wrong lengths, missing or extra notes or rests, missing ties, and markings the program missed (dynamics, text such as "Marcia" or "solo", tempo marks, rehearsal marks).
+Compare them bar by bar. Report only differences you can actually see in the image: wrong pitches or accidentals, wrong lengths, missing or extra notes or rests, missing ties, markings the program missed (dynamics, text such as "Marcia" or "solo", tempo marks, rehearsal marks), and multi-bar rests: a rest bar with a number above it lasts that many bars, but the program reads it as a single bar.
 Answer with JSON only, no other text:
 {"findings": [{"part": "P1", "bar": "12", "problem": "the second note is A4, not G4", "fix": "bar 12: E5/4 A4/4 C5/2"}],
  "missing": [{"part": "P1", "bar": "12", "beat": 1, "kind": "dynamic", "value": "mf"}]}
 - "fix" is the whole corrected bar in MCN at written pitch, and must add up to the time signature. Leave it out if you are not sure.
-- "kind" is one of dynamic, text, tempo, rehearsal. For tempo, value is like "Allegro" or "quarter = 120".
+- "kind" is one of dynamic, text, tempo, rehearsal, multirest. For tempo, value is like "Allegro" or "quarter = 120". For multirest, value is the number printed above the rest, e.g. {"bar": "14", "kind": "multirest", "value": 7}.
 - If everything matches, answer {"findings": [], "missing": []}.
 
 ${MCN_GUIDE}`;
@@ -109,7 +114,7 @@ export function parseFindings(score: Score, system: SystemCrop, answer: unknown)
       return null;
     }
     if (measureIndex < system.measures[0] || measureIndex > system.measures[1]) return null;
-    return { partIndex, measureIndex };
+    return { partIndex, measureIndex, measureId: score.measures[measureIndex]!.id };
   };
   for (const raw of data.findings ?? []) {
     if (!raw || typeof raw !== "object") continue;
@@ -133,9 +138,17 @@ export function parseFindings(score: Score, system: SystemCrop, answer: unknown)
     if (!raw || typeof raw !== "object") continue;
     const item = raw as Record<string, unknown>;
     const where = resolve(item);
-    const kind = String(item.kind ?? "").toLowerCase();
+    const kind = String(item.kind ?? "").toLowerCase().replace(/[\s_-]/g, "");
     const value = typeof item.value === "string" ? item.value.trim() : typeof item.value === "number" ? String(item.value) : "";
-    if (!where || !value || !["dynamic", "text", "tempo", "rehearsal"].includes(kind)) continue;
+    if (!where || !value) continue;
+    if (kind === "multirest" || kind === "multibarrest" || kind === "multimeasurerest") {
+      const bars = Number.parseInt(value, 10);
+      // Only a rest bar can be a multi-bar rest; the count must be a plausible printed number.
+      if (!(bars >= 2 && bars <= 500) || !isRestBar(score, where.measureIndex)) continue;
+      out.push({ id: `f${++findingCounter}`, ...where, kind: "multirest", value: String(bars), problem: `A ${bars}-bar rest, read as one bar` });
+      continue;
+    }
+    if (!["dynamic", "text", "tempo", "rehearsal"].includes(kind)) continue;
     const beat = typeof item.beat === "number" && item.beat >= 1 ? item.beat : undefined;
     out.push({ id: `f${++findingCounter}`, ...where, kind: kind as FindingKind, value, beat, problem: `Missing ${kind}: ${value}` });
   }
@@ -167,16 +180,29 @@ export async function proofreadSystem(
 }
 
 export function proofreadSystems(pages: PageRecord[], score: Score): SystemCrop[] {
-  return pageSystems(pages, score.measures.length);
+  return pageSystems(pages, score);
+}
+
+/** Where a finding's bar is now (-1 when it was deleted). */
+export function findingBar(score: Score, finding: Finding): number {
+  return score.measures.findIndex((m) => m.id === finding.measureId);
 }
 
 /** Apply a finding to the score; returns the new score and a label for the undo history. */
 export function applyFinding(score: Score, finding: Finding): { score: Score; label: string } {
-  const bar = aiBarLabels(score)[finding.measureIndex]!;
+  const m = findingBar(score, finding);
+  if (m < 0) throw new Error("That bar no longer exists.");
+  const bar = aiBarLabels(score)[m]!;
   const part = partHandle(finding.partIndex);
   if (finding.kind === "notes") {
     if (!finding.fix) throw new Error("This finding has no fix to apply; correct the bar by hand.");
-    return { score: writeBars(score, finding.partIndex, finding.fix, "written").score, label: `Proofreading: bar ${bar}` };
+    // Bar numbers may have moved since (an expanded multi-bar rest): write to the bar's current number.
+    const fix = finding.fix.replace(/^(\s*bar\s+)[0-9A-Za-z]+/gim, (_all, prefix: string) => `${prefix}${bar}`);
+    return { score: writeBars(score, finding.partIndex, fix, "written").score, label: `Proofreading: bar ${bar}` };
+  }
+  if (finding.kind === "multirest") {
+    const bars = Number(finding.value);
+    return { score: expandMultiRest(score, m, bars), label: `Proofreading: ${bars}-bar rest at bar ${bar}` };
   }
   let tool: string;
   let args: Record<string, unknown>;

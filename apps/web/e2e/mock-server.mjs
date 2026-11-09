@@ -111,17 +111,23 @@ function lastUserText(messages) {
   return "";
 }
 
-/** Proofreading: report the first note of the line an octave off, and a missing dynamic. */
+/** Proofreading: the first note of the line is an octave off, a dynamic is missing, and a rest bar is a 4-bar rest. */
 function proofread(messages) {
   const user = messages[messages.length - 1];
   const parts = Array.isArray(user?.content) ? user.content : [];
   const textPart = parts.find((p) => p.type === "text")?.text ?? "";
   if (!parts.some((p) => p.type === "image_url" && p.image_url.url.startsWith("data:image/"))) return text('{"findings": [], "missing": []}');
-  const line = textPart.split("\n").find((l) => /^bar \S+( staff 1)?: /.test(l) && /[A-G]/.test(l.split(": ")[1]));
-  if (!line) return text('{"findings": [], "missing": []}');
-  const bar = /^bar ([^\s:]+)/.exec(line)[1];
-  const fixed = line.replace(/([A-G](?:#|b|x|bb)?)(\d)/, (_m, note, octave) => `${note}${Math.min(8, Number(octave) + 1)}`);
-  const answer = { findings: [{ part: "P1", bar, problem: "The first note is an octave higher in the original.", fix: fixed.replace(/^bar \S+ staff 1:/, `bar ${bar} staff 1:`) }], missing: [{ part: "P1", bar, beat: 1, kind: "dynamic", value: "mf" }] };
+  const lines = textPart.split("\n");
+  const answer = { findings: [], missing: [] };
+  const line = lines.find((l) => /^bar \S+( staff 1)?: /.test(l) && /[A-G]/.test(l.split(": ")[1]));
+  if (line) {
+    const bar = /^bar ([^\s:]+)/.exec(line)[1];
+    const fixed = line.replace(/([A-G](?:#|b|x|bb)?)(\d)/, (_m, note, octave) => `${note}${Math.min(8, Number(octave) + 1)}`);
+    answer.findings.push({ part: "P1", bar, problem: "The first note is an octave higher in the original.", fix: fixed });
+    answer.missing.push({ part: "P1", bar, beat: 1, kind: "dynamic", value: "mf" });
+  }
+  const rest = lines.find((l) => /^bar [^\s:]+( staff 1)?: R(\(|$)/.test(l));
+  if (rest) answer.missing.push({ part: "P1", bar: /^bar ([^\s:]+)/.exec(rest)[1], kind: "multirest", value: 4 });
   return text(JSON.stringify(answer));
 }
 

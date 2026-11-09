@@ -257,6 +257,9 @@ export function ScanImport({
           staffsPerSystem: layout.staves,
           measureRange: merged.ranges[i],
           systemStarts: layout.systemStarts,
+          systemStartIds: layout.systemStarts
+            .map((relative) => named.measures[(merged.ranges[i]?.[0] ?? 0) + relative]?.id)
+            .filter((id): id is string => !!id),
           notePositions: layout.notePositions,
         },
       });

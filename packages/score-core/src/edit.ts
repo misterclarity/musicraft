@@ -14,6 +14,7 @@ import {
   eventOnsets,
   eventValue,
   measureLengths,
+  measureIsEmpty,
   measureRest,
   renumberMeasures,
   type Articulation,
@@ -712,6 +713,58 @@ export function deleteMeasures(score: Score, from: number, to: number): Score {
     }
     renumberMeasures(draft);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Multi-bar rests
+// ---------------------------------------------------------------------------
+
+/** Whether a bar is rests only, in every part and voice (dynamics and other marks may be there). */
+export function isRestBar(score: Score, measureIndex: number): boolean {
+  if (!score.measures[measureIndex] || score.measures[measureIndex]!.implicit) return false;
+  return score.parts.every((part) => measureIsEmpty(part.measures[measureIndex]));
+}
+
+/** Runs of consecutive whole-bar rests (in every part): where a multi-bar rest may have been read as one bar. */
+export function restRuns(score: Score): { from: number; to: number }[] {
+  const runs: { from: number; to: number }[] = [];
+  score.measures.forEach((_, m) => {
+    if (!isRestBar(score, m)) return;
+    const last = runs[runs.length - 1];
+    if (last && last.to === m - 1) last.to = m;
+    else runs.push({ from: m, to: m });
+  });
+  return runs;
+}
+
+const MAX_REST_BARS = 500;
+
+/**
+ * Turn the whole-bar rest at a bar into a rest of `bars` bars: the bar printed as a multi-bar rest
+ * (a number over the staff) that recognition read as a single bar. Empty bars are inserted after it.
+ */
+export function expandMultiRest(score: Score, measureIndex: number, bars: number): Score {
+  const label = score.measures[measureIndex]?.number ?? String(measureIndex + 1);
+  if (!isRestBar(score, measureIndex)) throw new EditError(`Bar ${label} has notes, so it isn't a multi-bar rest.`);
+  if (!Number.isInteger(bars) || bars < 1 || bars > MAX_REST_BARS) throw new EditError(`A multi-bar rest lasts 1 to ${MAX_REST_BARS} bars.`);
+  if (bars === 1) return score;
+  return insertMeasures(score, measureIndex + 1, bars - 1);
+}
+
+/**
+ * Make the run of whole-bar rests that contains a bar last `bars` bars in total, adding or removing
+ * empty bars at its end.
+ */
+export function setRestLength(score: Score, measureIndex: number, bars: number): Score {
+  if (!isRestBar(score, measureIndex)) {
+    throw new EditError(`Bar ${score.measures[measureIndex]?.number ?? measureIndex + 1} has notes, so it isn't a rest.`);
+  }
+  if (!Number.isInteger(bars) || bars < 1 || bars > MAX_REST_BARS) throw new EditError(`A rest lasts 1 to ${MAX_REST_BARS} bars.`);
+  const run = restRuns(score).find((r) => r.from <= measureIndex && measureIndex <= r.to)!;
+  const length = run.to - run.from + 1;
+  if (bars > length) return insertMeasures(score, run.to + 1, bars - length);
+  if (bars < length) return deleteMeasures(score, run.from + bars, run.to);
+  return score;
 }
 
 export interface MeasureClipboard {

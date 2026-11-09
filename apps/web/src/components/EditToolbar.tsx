@@ -171,6 +171,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
             <Menu.Item onClick={() => onBarDialog("tempo")}>Tempo…</Menu.Item>
             <Menu.Item onClick={() => onBarDialog("rehearsal")}>Rehearsal mark…</Menu.Item>
             <Menu.Item onClick={() => onBarDialog("barline")}>Barline and repeats…</Menu.Item>
+            <Menu.Item onClick={() => onBarDialog("multirest")}>Multi-bar rest…</Menu.Item>
             <Menu.Item disabled={!hasNotes} onClick={() => onBarDialog("text")}>
               Text at the selected note…
             </Menu.Item>

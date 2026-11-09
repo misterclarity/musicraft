@@ -3,7 +3,7 @@ import { aiBarLabels, partHandle, type Score } from "@musicraft/score-core";
 import { IconCheck, IconEye, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { previewActive, useLlm } from "../ai/assistant";
-import { applyFinding, proofreadSystem, proofreadSystems, type Finding } from "../ai/proofread";
+import { applyFinding, findingBar, proofreadSystem, proofreadSystems, type Finding } from "../ai/proofread";
 import type { PageRecord } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { useProject } from "../state/project";
@@ -139,13 +139,15 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
             <Stack gap="xs">
               {findings.map((f) => {
                 const state = status[f.id]?.status ?? "open";
+                // The bar may have moved since (e.g. after an expanded multi-bar rest).
+                const bar = score ? findingBar(score, f) : -1;
                 const partId = score?.parts[f.partIndex]?.id ?? "";
                 return (
                   <Paper key={f.id} withBorder p="xs" radius="md" opacity={state === "ignored" ? 0.5 : 1} data-testid="finding">
                     <Stack gap={4}>
                       <Group gap={6}>
                         <Badge size="sm" variant="light">
-                          Bar {labels[f.measureIndex]}
+                          Bar {bar >= 0 ? labels[bar] : "(deleted)"}
                         </Badge>
                         {(score?.parts.length ?? 1) > 1 && (
                           <Badge size="sm" variant="outline">
@@ -175,7 +177,7 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
                         </Text>
                       )}
                       <Group gap={4} justify="flex-end">
-                        <Button size="compact-xs" variant="subtle" leftSection={<IconEye size={12} />} onClick={() => onShow(f.measureIndex, partId)}>
+                        <Button size="compact-xs" variant="subtle" leftSection={<IconEye size={12} />} disabled={bar < 0} onClick={() => onShow(bar, partId)}>
                           Show
                         </Button>
                         {state === "open" && (

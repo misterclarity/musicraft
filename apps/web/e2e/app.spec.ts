@@ -127,6 +127,44 @@ test("reads a photo with the recognition service, then proofreads it against the
   await expect(finding).toContainText("octave higher in the original");
   await finding.getByRole("button", { name: "Apply" }).click();
   await expect(finding).toContainText("Applied");
+  // The vision model also read a "4" above the last bar's rest: four bars instead of one.
+  const rest = page.getByTestId("finding").filter({ hasText: "A 4-bar rest, read as one bar" });
+  await rest.getByRole("button", { name: "Apply" }).click();
+  await expect(rest).toContainText("Applied");
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Transposed score · 11 bars")).toBeVisible();
+});
+
+test("sets multi-bar rests from the list of rests and the bar menu", async ({ page, request }) => {
+  await useMockServer(page);
+  const photo = await (await request.get(`${MOCK}/test-page.png`)).body();
+  await page.goto("./");
+  await page.getByTestId("file-input").setInputFiles({ name: "page.png", mimeType: "image/png", buffer: photo });
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByText("Trumpet in B♭", { exact: true }).first().click();
+  await page.getByRole("button", { name: /^Read \d+ page/ }).click();
+  await page.getByRole("button", { name: "Open score" }).click();
+  await expect(page.locator(".score-page svg").first()).toBeVisible();
+
+  // Checks lists the rest bars of a scanned part: bar 8 is printed as a 6-bar rest.
+  await page.getByRole("tab", { name: /Checks/ }).click();
+  const row = page.getByTestId("rest-run").filter({ hasText: "Bar 8" });
+  await row.getByText("Bar 8").click();
+  await expect(page.locator(".original-highlight").first()).toBeVisible();
+  await row.getByRole("textbox").fill("6");
+  await row.getByRole("button", { name: "Set" }).click();
+  await expect(page.getByText("Transposed score · 13 bars")).toBeVisible();
+  await expect(page.getByTestId("rest-run").filter({ hasText: "Bars 8–13" })).toBeVisible();
+  // The line on the original page still covers the new bars.
+  await page.getByTestId("rest-run").filter({ hasText: "Bars 8–13" }).getByText("Bars 8–13").click();
+  await expect(page.locator(".original-highlight").first()).toBeVisible();
+
+  // The bar menu does the same for the selected bar.
+  await page.getByRole("button", { name: "Bar", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Multi-bar rest…" }).click();
+  await page.getByRole("textbox", { name: "This rest lasts (bars)" }).fill("2");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByText("Transposed score · 9 bars")).toBeVisible();
 });
 
 test("arranges a piano piece for brass quintet as a new score", async ({ page }) => {

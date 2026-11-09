@@ -7,7 +7,7 @@ import { produce, type Draft } from "immer";
 import { z } from "zod";
 import { arrangeForEnsemble } from "../arrange";
 import { checkScore } from "../checks";
-import { EditError, insertMeasures, deleteMeasures, setBarline, setKeySignature, setRehearsal, setTempo, setTimeSignature } from "../edit";
+import { EditError, expandMultiRest, insertMeasures, deleteMeasures, setBarline, setKeySignature, setRehearsal, setTempo, setTimeSignature } from "../edit";
 import { add, cmp, frac, lt, type Fraction } from "../fraction";
 import { analysisBeat, analyzeHarmony, describeBarHarmony } from "../harmony";
 import { newId } from "../ids";
@@ -841,6 +841,28 @@ const arrange = tool(
   },
 );
 
+const multiBarRest = tool(
+  "multi_bar_rest",
+  "Make a whole-bar rest last several bars. Recognition reads a multi-bar rest (one bar printed with a number above it, e.g. 7) as a single bar; this adds the missing empty bars after it. Later bars are renumbered.",
+  {
+    bar: barArg.describe("The bar with the rest"),
+    bars: z.number().int().min(2).max(500).describe("How many bars the rest lasts (the printed number)"),
+  },
+  (score, args) => {
+    const m = bar(score, args.bar);
+    let next: Score;
+    try {
+      next = expandMultiRest(score, m, args.bars);
+    } catch (err) {
+      throw new ToolError((err as Error).message);
+    }
+    const before = aiBarLabels(score)[m];
+    const after = aiBarLabels(next);
+    const what = `bar ${before} is now a ${args.bars}-bar rest (bars ${after[m]}–${after[m + args.bars - 1]})`;
+    return { score: next, result: `Done: ${what}. Later bars were renumbered.`, summary: what[0]!.toUpperCase() + what.slice(1) };
+  },
+);
+
 /** The score tools, in the order they are offered to the model. */
 export const SCORE_TOOLS: AiTool[] = [
   getOverview,
@@ -860,6 +882,7 @@ export const SCORE_TOOLS: AiTool[] = [
   setArticulation,
   insertBars,
   deleteBars,
+  multiBarRest,
   addPartTool,
   removePartTool,
   renamePartTool,

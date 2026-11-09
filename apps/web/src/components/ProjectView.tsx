@@ -47,6 +47,7 @@ import { OriginalPages } from "./OriginalPages";
 import { PartsPanel } from "./PartsPanel";
 import { PlaybackBar } from "./PlaybackBar";
 import { ProofreadModal } from "./ProofreadModal";
+import { RestRunsPanel } from "./RestRunsPanel";
 import { ScoreView, type MeasureMark } from "./ScoreView";
 
 export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: string; onBack: () => void; onOpenSettings: () => void }) {
@@ -296,6 +297,16 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                 <Button size="xs" variant="light" fullWidth mb="sm" leftSection={<IconSparkles size={14} />} onClick={() => setProofreadOpen(true)}>
                   Proofread against the original with AI
                 </Button>
+              )}
+              {pages.length > 0 && (
+                <RestRunsPanel
+                  score={score}
+                  onApply={(next, label) => apply(next, label)}
+                  onShow={(m) => {
+                    project.select({ eventIds: [], measures: { from: m, to: m } });
+                    setFocus(m);
+                  }}
+                />
               )}
               <IssuesPanel issues={issues} onJump={jump} />
             </Tabs.Panel>

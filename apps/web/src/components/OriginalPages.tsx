@@ -2,6 +2,7 @@ import { Text } from "@mantine/core";
 import { locate, type Score } from "@musicraft/score-core";
 import { useEffect, useMemo, useRef } from "react";
 import type { PageRecord } from "../lib/db";
+import { resolveSystems, systemOfMeasure } from "../lib/pageLayout";
 import type { Selection } from "../state/project";
 
 interface Highlight {
@@ -20,25 +21,13 @@ export function locateOnPages(pages: PageRecord[], score: Score, selection: Sele
     if (loc) measure = loc.measureIndex;
   }
   if (measure === undefined) return null;
-  const pageIndex = pages.findIndex((p) => {
-    const range = p.layout?.measureRange;
-    return range && measure! >= range[0] && measure! <= range[1];
-  });
-  if (pageIndex < 0) return null;
-  const page = pages[pageIndex]!;
-  const layout = page.layout!;
-  const relative = measure - layout.measureRange![0];
-  const starts = layout.systemStarts?.length ? layout.systemStarts : [0];
-  let system = 0;
-  starts.forEach((start, i) => {
-    if (start <= relative) system = i;
-  });
-  const perSystem = Math.max(1, layout.staffsPerSystem ?? 1);
-  const boxes = layout.staffs.slice(system * perSystem, system * perSystem + perSystem);
-  const position = eventId ? layout.notePositions?.[eventId] : undefined;
+  const system = systemOfMeasure(resolveSystems(pages, score), measure);
+  if (!system) return null;
+  const page = pages[system.page]!;
+  const position = eventId ? page.layout?.notePositions?.[eventId] : undefined;
   return {
-    page: pageIndex,
-    boxes,
+    page: system.page,
+    boxes: system.staffs,
     point: position ? { x: position.x / page.width, y: position.y / page.height } : undefined,
   };
 }
@@ -57,6 +46,7 @@ export function OriginalPages({
   const urls = useMemo(() => pages.map((p) => URL.createObjectURL(p.blob)), [pages]);
   useEffect(() => () => urls.forEach((u) => URL.revokeObjectURL(u)), [urls]);
   const highlight = useMemo(() => locateOnPages(pages, score, selection), [pages, score, selection]);
+  const systems = useMemo(() => resolveSystems(pages, score), [pages, score]);
   const highlightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,7 +64,7 @@ export function OriginalPages({
             <img src={urls[i]} alt={page.name} />
             {layout?.staffs.map((staff, s) => {
               const system = Math.floor(s / perSystem);
-              const firstMeasure = (layout.measureRange?.[0] ?? 0) + (layout.systemStarts?.[system] ?? 0);
+              const firstMeasure = systems.find((x) => x.page === i && x.system === system)?.from ?? 0;
               return (
                 <div
                   key={s}

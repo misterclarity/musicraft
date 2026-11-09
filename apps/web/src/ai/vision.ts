@@ -1,6 +1,7 @@
 /** Images of the original scanned pages for the assistant: crops of the systems that hold some bars. */
 import { aiBarLabels, barIndex, type Score } from "@musicraft/score-core";
 import type { PageRecord } from "../lib/db";
+import { resolveSystems } from "../lib/pageLayout";
 import type { BrowserTool } from "./agent";
 
 export interface SystemCrop {
@@ -11,20 +12,12 @@ export interface SystemCrop {
   box: { x: number; y: number; width: number; height: number };
 }
 
-/** The systems (lines of music) of the scanned pages, with the bars each one holds. */
-export function pageSystems(pages: PageRecord[], measureCount: number): SystemCrop[] {
-  const systems: SystemCrop[] = [];
-  pages.forEach((page, pageIndex) => {
-    const layout = page.layout;
-    if (!layout?.measureRange) return;
-    const [first, last] = layout.measureRange;
-    const starts = layout.systemStarts?.length ? layout.systemStarts : [0];
-    const perSystem = Math.max(1, layout.staffsPerSystem ?? 1);
-    starts.forEach((start, i) => {
-      const from = first + start;
-      const to = i + 1 < starts.length ? first + starts[i + 1]! - 1 : last;
-      const staffs = layout.staffs.slice(i * perSystem, i * perSystem + perSystem);
-      if (!staffs.length || from > to || from >= measureCount) return;
+/** The systems (lines of music) of the scanned pages, with the bars each one holds and a crop box. */
+export function pageSystems(pages: PageRecord[], score: Score): SystemCrop[] {
+  return resolveSystems(pages, score)
+    .filter((system) => system.staffs.length)
+    .map((system) => {
+      const { staffs } = system;
       const x = Math.min(...staffs.map((s) => s.x));
       const y = Math.min(...staffs.map((s) => s.y));
       const right = Math.max(...staffs.map((s) => s.x + s.width));
@@ -37,10 +30,8 @@ export function pageSystems(pages: PageRecord[], measureCount: number): SystemCr
         width: Math.min(1, right + 0.02) - Math.max(0, x - 0.02),
         height: Math.min(1, bottom + pad) - Math.max(0, y - pad),
       };
-      systems.push({ page: pageIndex, measures: [from, Math.min(to, measureCount - 1)], box });
+      return { page: system.page, measures: [system.from, system.to] as [number, number], box };
     });
-  });
-  return systems;
 }
 
 /** Crop part of a page image to a JPEG data URL no wider than maxWidth. */
@@ -94,7 +85,7 @@ export function lookAtPageTool(pages: PageRecord[]): BrowserTool {
         return { error: true, result: `Error: ${(err as Error).message}` };
       }
       if (to < from) [from, to] = [to, from];
-      const systems = pageSystems(pages, score.measures.length).filter((s) => s.measures[1] >= from && s.measures[0] <= to);
+      const systems = pageSystems(pages, score).filter((s) => s.measures[1] >= from && s.measures[0] <= to);
       const labels = aiBarLabels(score);
       if (!systems.length) {
         if (!pages.length) return { error: true, result: "Error: this score has no scanned pages." };

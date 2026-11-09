@@ -2,12 +2,15 @@ import { Button, Checkbox, Group, Modal, NumberInput, Select, Stack, Text, TextI
 import {
   concertKeys,
   getInstrument,
+  isRestBar,
   isUnison,
   keyName,
+  restRuns,
   setBarline,
   setClef,
   setKeySignature,
   setRehearsal,
+  setRestLength,
   setTempo,
   setText,
   setTimeSignature,
@@ -22,7 +25,7 @@ import {
 import { useState, type ReactNode } from "react";
 import type { Selection } from "../state/project";
 
-export type BarDialog = "key" | "time" | "clef" | "tempo" | "rehearsal" | "barline" | "text";
+export type BarDialog = "key" | "time" | "clef" | "tempo" | "rehearsal" | "barline" | "text" | "multirest";
 
 const KEY_OPTIONS = Array.from({ length: 15 }, (_, i) => i - 7);
 
@@ -77,6 +80,7 @@ export function BarDialogs({ dialog, score, selection, concert, onClose, onApply
     rehearsal: `Rehearsal mark at ${barLabel}`,
     barline: `Barline at the end of ${barLabel}`,
     text: "Text at the selected note",
+    multirest: `Multi-bar rest at ${barLabel}`,
   }[dialog];
 
   return (
@@ -88,6 +92,7 @@ export function BarDialogs({ dialog, score, selection, concert, onClose, onApply
       {dialog === "rehearsal" && <RehearsalForm score={score} measureIndex={measureIndex} onDone={done} />}
       {dialog === "barline" && <BarlineForm score={score} measureIndex={measureIndex} onDone={done} />}
       {dialog === "text" && <TextForm score={score} eventId={selection.eventIds[0]} onDone={done} />}
+      {dialog === "multirest" && <MultiRestForm score={score} measureIndex={measureIndex} onDone={done} />}
     </Modal>
   );
 }
@@ -334,6 +339,28 @@ function BarlineForm({ score, measureIndex, onDone }: { score: Score; measureInd
           )
         }
       />
+    </Stack>
+  );
+}
+
+function MultiRestForm({ score, measureIndex, onDone }: { score: Score; measureIndex: number; onDone: Done }) {
+  const rest = isRestBar(score, measureIndex);
+  const run = restRuns(score).find((r) => r.from <= measureIndex && measureIndex <= r.to);
+  const length = run ? run.to - run.from + 1 : 1;
+  const [bars, setBars] = useState<number>(length);
+  if (!rest) {
+    return <Text size="sm">This bar has notes. A multi-bar rest is a bar with only rests, in every part.</Text>;
+  }
+  return (
+    <Stack gap="sm">
+      <NumberInput label="This rest lasts (bars)" min={1} max={500} value={bars} onChange={(v) => setBars(Math.max(1, Math.round(Number(v) || 1)))} data-autofocus />
+      <Hint>
+        {length > 1
+          ? `Bars ${score.measures[run!.from]!.number}–${score.measures[run!.to]!.number} are rests now (${length} bars). `
+          : ""}
+        Recognition reads a multi-bar rest (a number above one bar) as a single bar: enter the printed number. Empty bars are added or removed at the end of the rest.
+      </Hint>
+      <Actions onSave={() => onDone(setRestLength(score, measureIndex, bars), `Rest of ${bars} bars`)} saveDisabled={bars === length} />
     </Stack>
   );
 }

@@ -7,6 +7,7 @@ import {
   deleteMeasures,
   deleteNotes,
   enterNote,
+  expandMultiRest,
   formatPitch,
   insertMeasures,
   moveNotes,
@@ -14,9 +15,11 @@ import {
   parsePitch,
   pasteMeasures,
   respellNotes,
+  restRuns,
   setDuration,
   setDurations,
   setDynamic,
+  setRestLength,
   setTempo,
   shownPitch,
   toggleArticulation,
@@ -256,5 +259,46 @@ describe("deleting bars", () => {
     // A tempo change inside the deleted bars still applies after them.
     score = setTempo(score, 1, { bpm: 132, beatUnit: "quarter" });
     expect(deleteMeasures(score, 1, 1).measures[1]!.tempo).toEqual({ bpm: 132, beatUnit: "quarter" });
+  });
+});
+
+describe("multi-bar rests", () => {
+  /** A trumpet part with notes in bars 1 and 4 and rests in bars 2, 3 and 5. */
+  function part(): Score {
+    const score = newScore({ title: "T", parts: [{ instrument: "trumpet-bb" }], measures: 5 });
+    let next = enterNote(score, events(score, 0)[0]!.id, "C", { inputDuration: { type: "whole", dots: 0 } }).score;
+    next = enterNote(next, events(next, 3)[0]!.id, "D", { inputDuration: { type: "whole", dots: 0 } }).score;
+    return next;
+  }
+
+  it("finds runs of whole-bar rests", () => {
+    expect(restRuns(part())).toEqual([
+      { from: 1, to: 2 },
+      { from: 4, to: 4 },
+    ]);
+  });
+
+  it("expands a rest read as one bar into the printed number of bars", () => {
+    const score = part();
+    const expanded = expandMultiRest(score, 4, 7);
+    expect(expanded.measures).toHaveLength(11);
+    expect(expanded.measures.map((m) => m.number).slice(-7)).toEqual(["5", "6", "7", "8", "9", "10", "11"]);
+    expect(expanded.measures[10]!.barline).toBe("final");
+    expect(restRuns(expanded)).toEqual([
+      { from: 1, to: 2 },
+      { from: 4, to: 10 },
+    ]);
+    // Bars before it keep their ids, so anything anchored to them (like scanned page lines) stays in place.
+    expect(expanded.measures.slice(0, 5).map((m) => m.id)).toEqual(score.measures.map((m) => m.id));
+    expect(() => expandMultiRest(score, 0, 4)).toThrow(/has notes/);
+    expect(expandMultiRest(score, 1, 1)).toBe(score);
+  });
+
+  it("sets the total length of a run of rests", () => {
+    const score = part();
+    expect(setRestLength(score, 2, 5).measures).toHaveLength(8);
+    expect(restRuns(setRestLength(score, 1, 5))[0]).toEqual({ from: 1, to: 5 });
+    expect(restRuns(setRestLength(score, 1, 1))[0]).toEqual({ from: 1, to: 1 });
+    expect(setRestLength(score, 1, 1).measures).toHaveLength(4);
   });
 });

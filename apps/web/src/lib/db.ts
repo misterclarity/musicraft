@@ -46,6 +46,11 @@ export interface PageLayout {
   measureRange?: [number, number];
   /** Where each system starts, as measure indexes relative to the page's first measure. */
   systemStarts?: number[];
+  /**
+   * Id of each system's first bar. Lines follow these ids, so they stay aligned when bars are added
+   * or removed later (see lib/pageLayout.ts).
+   */
+  systemStartIds?: string[];
   /** Approximate note positions in image pixels, by event id. */
   notePositions?: Record<string, { x: number; y: number }>;
 }

@@ -2,7 +2,9 @@ import {
   Alert,
   Badge,
   Button,
+  Code,
   Group,
+  List,
   Modal,
   NumberInput,
   PasswordInput,
@@ -22,13 +24,14 @@ import {
   type LlmCapabilities,
   type OmrHealth,
 } from "../lib/server";
+import { diagnoseRecognition, type Diagnosis } from "../lib/diagnose";
 import { useSettings, type Settings, type VisionOverride } from "../lib/settings";
 
 interface CheckResult {
   llm?: LlmCapabilities;
   llmError?: string;
   omr?: OmrHealth;
-  omrError?: string;
+  omrProblem?: Diagnosis;
 }
 
 export function SettingsModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
@@ -47,7 +50,7 @@ export function SettingsModal({ opened, onClose }: { opened: boolean; onClose: (
       llm: llm.status === "fulfilled" ? llm.value : undefined,
       llmError: llm.status === "rejected" ? errorText(llm.reason) : undefined,
       omr: omr.status === "fulfilled" ? omr.value : undefined,
-      omrError: omr.status === "rejected" ? errorText(omr.reason) : undefined,
+      omrProblem: omr.status === "rejected" ? diagnoseRecognition(omr.reason, draft, llm.status === "fulfilled") : undefined,
     });
     setChecking(false);
   }
@@ -199,11 +202,28 @@ function ConnectionReport({ result }: { result: CheckResult }) {
           </Text>
         </Alert>
       ) : (
-        <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="Recognition service not reachable">
-          <Text size="sm">{result.omrError}</Text>
-          <Text size="xs" c="dimmed">
-            You can still open MusicXML files; reading PDFs and photos needs this service.
-          </Text>
+        <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="Recognition service not reachable" data-testid="omr-problem">
+          <Stack gap={6}>
+            <Text size="sm">{result.omrProblem?.cause}</Text>
+            <List size="sm" spacing={4}>
+              {result.omrProblem?.steps.map((step) => (
+                <List.Item key={step}>{step}</List.Item>
+              ))}
+            </List>
+            {result.omrProblem && (
+              <>
+                <Text size="xs" c="dimmed">
+                  To see what your gateway answers, run this anywhere (with your key):
+                </Text>
+                <Code block style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                  {result.omrProblem.curl}
+                </Code>
+              </>
+            )}
+            <Text size="xs" c="dimmed">
+              You can still open MusicXML files; reading PDFs and photos needs this service.
+            </Text>
+          </Stack>
         </Alert>
       )}
     </Stack>

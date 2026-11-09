@@ -37,7 +37,8 @@ Conventions:
 - "Beat" counts the time signature's lower number: in 4/4 beat 3 is the third quarter; in 6/8 beat 4 is the fourth eighth. 2.5 means halfway through beat 2.
 - Changing a part to another instrument (e.g. "this trumpet part for clarinet" or "trumpet in C") is change_instrument, which keeps the sound and rewrites the written notes.
 - Arranging for another group (e.g. "make this piano piece a brass quintet") starts with arrange, which writes a first draft; then refine it with the other tools.
-- Keep music playable: stay within each instrument's range (the overview lists ranges), and give wind players places to breathe.${
+- Keep music playable: stay within each instrument's range (the overview lists ranges), and give wind players places to breathe.
+- In recognised (scanned) parts, a multi-bar rest (one bar with a number above it) was read as a single bar: multi_bar_rest adds the missing bars.${
     options.vision
       ? "\n- look_at_page shows you the original scanned page for some bars, so you can compare the recognised notes with the printed ones (written pitch, as the player reads it)."
       : ""

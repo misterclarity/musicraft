@@ -109,6 +109,15 @@ describe("tools", () => {
     expect(run(score, "add_dynamics", { part: "P1", marks: [{ bar: 1, beat: 5, dynamic: "p" }] }).result).toMatch(/Beat 5 is not in bar 1/);
   });
 
+  it("expands a multi-bar rest", () => {
+    const score = newScore({ title: "T", parts: [{ instrument: "trumpet-bb" }], measures: 3 });
+    const result = run(score, "multi_bar_rest", { bar: 2, bars: 6 });
+    expect(result.result).toBe("Done: bar 2 is now a 6-bar rest (bars 2–7). Later bars were renumbered.");
+    expect(result.score!.measures).toHaveLength(8);
+    const withNotes = ok(score, "write_bars", { part: "P1", music: "bar 1: C5/1" });
+    expect(run(withNotes, "multi_bar_rest", { bar: 1, bars: 4 }).result).toMatch(/has notes/);
+  });
+
   it("inserts and deletes bars", () => {
     let score = newScore({ title: "T", parts: [{ instrument: "trumpet-bb" }], measures: 4 });
     score = ok(score, "insert_bars", { after: 2, count: 2 });

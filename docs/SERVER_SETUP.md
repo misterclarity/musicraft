@@ -13,7 +13,21 @@ make sure `gateway.py` handles the browser's CORS requests.
 
 ## 1. Start the recognition service
 
-On the server, from a checkout of this repository:
+You need, on the machine that runs llama-server and `gateway.py`:
+
+- **Docker Engine with the Compose plugin** (`docker compose version` should work).
+- For the GPU build only: the AMD GPU kernel driver on the host (if llama.cpp already uses the W7800 through
+  ROCm or Vulkan, it is there). ROCm itself comes inside the container; it needs access to `/dev/kfd` and
+  `/dev/dri`, which the compose file grants.
+- A checkout of this repository. Until the work is merged into `main`, use its branch:
+
+```bash
+git clone https://github.com/misterclarity/musicraft.git
+cd musicraft
+git checkout claude/music-sheet-digitizer-01so9g
+```
+
+Then, from the repository folder:
 
 ```bash
 cd deploy
