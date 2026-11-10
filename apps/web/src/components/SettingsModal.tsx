@@ -200,6 +200,11 @@ function ConnectionReport({ result }: { result: CheckResult }) {
                 }`
               : "Service is up."}
           </Text>
+          {result.omr.secondEngine && (
+            <Text size="sm">
+              Second reading: {result.omr.secondEngine.name} {result.omr.secondEngine.version ?? ""} on {result.omr.secondEngine.device ?? "?"}
+            </Text>
+          )}
         </Alert>
       ) : (
         <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="Recognition service not reachable" data-testid="omr-problem">

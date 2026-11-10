@@ -9,8 +9,15 @@ import { deflateSync } from "node:zlib";
 const port = Number(process.argv[2] ?? process.env.MOCK_PORT ?? 8790);
 const KEY = process.env.MOCK_API_KEY ?? "test-key";
 const OMR_URL = process.env.MOCK_OMR_URL;
-// Without a real recognition service, recognised pages come back as this MusicXML.
-const OMR_RESULT = readFileSync(new URL("../../../packages/score-core/test/fixtures/trumpet-part.musicxml", import.meta.url), "utf8");
+// Without a real recognition service, recognised pages come back as this MusicXML, with the tempo
+// mark read as the title, as homr sometimes does.
+const OMR_RESULT = readFileSync(new URL("../../../packages/score-core/test/fixtures/trumpet-part.musicxml", import.meta.url), "utf8").replace(
+  "<work-title>Test March</work-title>",
+  "<work-title>(d=112)</work-title>",
+);
+// Asked for a second reading, the stand-in's first reading misses the rest at the end of bar 1, so
+// the second one, which has every bar right, is the better one.
+const FIRST_OF_TWO = OMR_RESULT.replace("<note><rest/><duration>12</duration><type>quarter</type></note>", "");
 
 // ---------------------------------------------------------------------------
 // A generated page image (white, with staff lines) for the stand-in recognition service.
@@ -210,11 +217,14 @@ const server = createServer((req, res) => {
     return;
   }
   if (req.method === "POST" && path === "/omr/v1/omr/jobs") {
-    req.resume();
+    let raw = "";
+    req.setEncoding("latin1");
+    req.on("data", (chunk) => (raw += chunk));
     req.on("end", () => {
       const id = `job${jobs.size + 1}`;
-      jobs.set(id, { created: Date.now() });
-      json(res, 202, { id, status: "queued", progress: { done: 0, total: 1, stage: "queued" }, error: null, pages: [] });
+      const second = raw.includes('"second":true');
+      jobs.set(id, { created: Date.now(), second });
+      json(res, 202, { id, status: "queued", progress: { done: 0, total: second ? 2 : 1, stage: "queued" }, error: null, second, pages: [] });
     });
     return;
   }
@@ -231,19 +241,32 @@ const server = createServer((req, res) => {
       res.end(pagePng());
       return;
     }
-    const done = Date.now() - jobs.get(job[1]).created > 600;
+    const { created, second } = jobs.get(job[1]);
+    const done = Date.now() - created > 600;
     const staffs = PAGE.systems.map((top) => ({ x: 60 / PAGE.width, y: top / PAGE.height, width: (PAGE.width - 120) / PAGE.width, height: 48 / PAGE.height }));
+    const music = !done
+      ? {}
+      : second
+        ? { musicxml: FIRST_OF_TWO, readBy: "mock 1", alternative: { readBy: "homr 0.7.0", musicxml: OMR_RESULT, staffs } }
+        : { musicxml: OMR_RESULT, readBy: "mock 1" };
     json(res, 200, {
       id: job[1],
       status: done ? "done" : "running",
-      progress: { done: done ? 1 : 0, total: 1, stage: done ? "done" : "recognising" },
+      progress: { done: done ? (second ? 2 : 1) : 0, total: second ? 2 : 1, stage: done ? "done" : "recognising" },
       error: null,
-      pages: [{ index: 0, status: done ? "done" : "pending", width: PAGE.width, height: PAGE.height, staffs: done ? staffs : [], error: null, ...(done ? { musicxml: OMR_RESULT } : {}) }],
+      second,
+      pages: [{ index: 0, status: done ? "done" : "pending", width: PAGE.width, height: PAGE.height, staffs: done ? staffs : [], error: null, ...music }],
     });
     return;
   }
   if (req.method === "GET" && path === "/omr/health") {
-    json(res, 200, { status: "ok", version: "mock", engine: { name: "mock", available: true, device: "cpu" }, limits: { maxUploadMb: 50, maxPages: 20 } });
+    json(res, 200, {
+      status: "ok",
+      version: "mock",
+      engine: { name: "mock", version: "1", available: true, device: "cpu" },
+      secondEngine: { name: "homr", version: "0.7.0", available: true, device: "cpu" },
+      limits: { maxUploadMb: 50, maxPages: 20 },
+    });
     return;
   }
   if (req.method === "POST" && path === "/v1/chat/completions") {

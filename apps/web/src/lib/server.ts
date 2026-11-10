@@ -242,8 +242,17 @@ export async function detectLlm(settings: Settings, signal?: AbortSignal): Promi
 export interface OmrHealth {
   status: string;
   version?: string;
-  engine?: { name: string; version?: string; available: boolean; device?: string };
+  engine?: OmrEngineInfo;
+  /** Another homr installation that can read every page a second time. */
+  secondEngine?: OmrEngineInfo | null;
   limits?: { maxUploadMb: number; maxPages: number };
+}
+
+export interface OmrEngineInfo {
+  name: string;
+  version?: string | null;
+  available: boolean;
+  device?: string;
 }
 
 export async function detectOmr(settings: Settings, signal?: AbortSignal): Promise<OmrHealth> {

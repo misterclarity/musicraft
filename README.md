@@ -21,14 +21,20 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
 1. **Open music.** Drop a MusicXML/MXL file, a PDF or phone photos on the start page, or start a new
    score. Photos and PDFs go through a short wizard: check the pages (corners are detected and
    straightened), say which instrument the music is written for, and the recognition service on your
-   server reads them. The original pages stay next to the score so you can compare bar by bar.
+   server reads them (with two versions of homr, if the server has both, keeping the better reading of
+   each page). Musicraft then corrects what the music itself gives away and lists it before you
+   open the score: a misread time signature (e.g. 12/8 read as 2/2, when the bars add up to 12/8), a
+   bass clef read in a part for an instrument that never uses one, a tempo mark taken for the title.
+   The original pages stay next to the score so you can compare bar by bar.
 2. **Check it.** The Checks tab lists bars that don't add up and notes outside an instrument's range.
    For scanned parts it also lists the rests: recognition reads a multi-bar rest (one bar with a number
    above it) as a single bar, so click each rest to see it on the original and type in how many bars it
    lasts (or use **Bar → Multi-bar rest…**).
    With a vision model, *Proofread against the original with AI* compares every line of the original
-   with the recognised notes and proposes fixes (and missed dynamics, text, tempo marks and multi-bar rest counts) that you
-   apply one by one.
+   with the recognised notes and proposes fixes that you apply one by one: wrong notes, missed key and
+   time signatures (applying a key signature also respells the notes that follow it), dynamics, text,
+   tempo marks and multi-bar rest counts. If recognition goes badly wrong on a page, the wizard's
+   **Recognition output** button saves what the service read, before any corrections, for a bug report.
 3. **Change it.**
    - *Parts* panel: change an instrument (e.g. Bb trumpet → C trumpet or clarinet, same sound),
      transpose, move by octaves, add or remove parts, and *Arrange for…* an ensemble (piano → brass

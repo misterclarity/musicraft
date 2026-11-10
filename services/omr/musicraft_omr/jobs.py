@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import Settings
-from .engine import Cancelled, Engine
+from .engine import Cancelled, Engine, PageOutcome, engine_label
 from .imaging import UnsupportedFile, open_image, pdf_page_count, prepare_page, render_pdf_page, sniff
 
 
@@ -35,6 +35,9 @@ class PageState:
     musicxml: str | None = None
     staffs: list[dict[str, float | bool]] = field(default_factory=list)
     error: str | None = None
+    # Which engine read `musicxml`, and the second engine's reading of the page, if one was asked for.
+    read_by: str | None = None
+    alternative: dict[str, object] | None = None
 
 
 @dataclass
@@ -50,6 +53,9 @@ class Job:
     finished: float | None = None
     pages: list[PageState] = field(default_factory=list)
     cancel: threading.Event = field(default_factory=threading.Event)
+    # Read every page a second time with the second engine.
+    second: bool = False
+    second_error: str | None = None
 
     def to_json(self, include_music: bool = True) -> dict[str, object]:
         return {
@@ -59,6 +65,8 @@ class Job:
             "error": self.error,
             "createdAt": self.created,
             "finishedAt": self.finished,
+            "second": self.second,
+            "secondError": self.second_error,
             "pages": [
                 {
                     "index": p.index,
@@ -67,7 +75,8 @@ class Job:
                     "height": p.height,
                     "staffs": p.staffs,
                     "error": p.error,
-                    **({"musicxml": p.musicxml} if include_music else {}),
+                    "readBy": p.read_by,
+                    **({"musicxml": p.musicxml, "alternative": p.alternative} if include_music else {}),
                 }
                 for p in self.pages
             ],
@@ -79,9 +88,10 @@ class JobLimitError(Exception):
 
 
 class JobManager:
-    def __init__(self, settings: Settings, engine: Engine) -> None:
+    def __init__(self, settings: Settings, engine: Engine, second: Engine | None = None) -> None:
         self.settings = settings
         self.engine = engine
+        self.second = second
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
         self.queue: queue.Queue[str] = queue.Queue()
@@ -92,8 +102,12 @@ class JobManager:
 
     # ------------------------------------------------------------------ public
 
-    def submit(self, files: list[tuple[str, bytes]], specs: list[PageSpec] | None) -> Job:
-        """Store the uploads and queue the job. Validation of contents happens here, decoding later."""
+    def submit(
+        self, files: list[tuple[str, bytes]], specs: list[PageSpec] | None, second: bool = False
+    ) -> Job:
+        """Store the uploads and queue the job. Validation of contents happens here, decoding later.
+
+        With `second`, every page is also read by the second engine (when there is one)."""
         self.cleanup()
         kinds = [sniff(data) for _name, data in files]
         if specs is None:
@@ -122,7 +136,14 @@ class JobManager:
             (folder / "pages.json").write_text(
                 json.dumps([spec.__dict__ for spec in specs]), encoding="utf-8"
             )
-            job = Job(id=job_id, folder=folder, created=time.time(), total=len(specs))
+            second = second and self.second is not None
+            job = Job(
+                id=job_id,
+                folder=folder,
+                created=time.time(),
+                total=len(specs) * (2 if second else 1),
+                second=second,
+            )
             job.pages = [PageState(index=i) for i in range(len(specs))]
             self.jobs[job_id] = job
         self.queue.put(job_id)
@@ -220,15 +241,65 @@ class JobManager:
                 else "Finishing"
             )
 
-        outcomes = self.engine.recognize(pages_dir, paths, progress, job.cancel.is_set)
+        try:
+            outcomes = self.engine.recognize(pages_dir, paths, progress, job.cancel.is_set)
+        except Cancelled:
+            raise
+        except Exception as error:
+            if not (job.second and self.second is not None):
+                raise
+            # The second engine may still read the pages.
+            outcomes = [PageOutcome(None, [], f"Recognition failed: {error}") for _ in paths]
+        label = engine_label(self.engine)
         for state, outcome in zip(job.pages, outcomes, strict=True):
             state.musicxml = outcome.musicxml
             state.staffs = outcome.staffs
             state.error = outcome.error
+            state.read_by = label if outcome.musicxml else None
             state.status = "done" if outcome.musicxml else "failed"
         job.done = len(paths)
+        if job.second and self.second is not None:
+            self._read_again(job, self.second, paths)
         if all(p.status == "failed" for p in job.pages):
             job.status, job.stage = "failed", "Failed"
             job.error = job.pages[0].error or "No music was recognised."
         else:
             job.status, job.stage = "done", "Done"
+
+    def _read_again(self, job: Job, engine: Engine, paths: list[Path]) -> None:
+        """Read the pages with the second engine; the app keeps the better reading of each page."""
+        # Each engine writes its results next to the images, so it gets copies of its own.
+        folder = job.folder / "second"
+        folder.mkdir()
+        copies = []
+        for path in paths:
+            copy = folder / path.name
+            shutil.copyfile(path, copy)
+            copies.append(copy)
+
+        def progress(done: int) -> None:
+            job.done = len(paths) + done
+            job.stage = (
+                f"Reading page {min(done + 1, len(paths))} of {len(paths)} again"
+                if done < len(paths)
+                else "Finishing"
+            )
+
+        try:
+            outcomes = engine.recognize(folder, copies, progress, job.cancel.is_set)
+        except Cancelled:
+            raise
+        except Exception as error:  # noqa: BLE001 - the first reading still stands
+            job.second_error = f"The second reading failed: {error}"
+            return
+        label = engine_label(engine)
+        for state, outcome in zip(job.pages, outcomes, strict=True):
+            if not outcome.musicxml:
+                continue
+            if state.musicxml:
+                state.alternative = {"readBy": label, "musicxml": outcome.musicxml, "staffs": outcome.staffs}
+            else:
+                # Only the second engine could read this page.
+                state.musicxml, state.staffs, state.read_by = outcome.musicxml, outcome.staffs, label
+                state.error, state.status = None, "done"
+        job.done = job.total

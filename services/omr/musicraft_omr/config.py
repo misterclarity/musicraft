@@ -36,6 +36,9 @@ class Settings:
     # "homr" runs the real engine; "fake" returns a fixed score (tests, demos).
     engine: str = "homr"
     homr_command: list[str] = field(default_factory=lambda: ["homr"])
+    # A second homr installation (another version) that can read every page again, so the app can
+    # keep the better reading of each page. Empty: no second reading.
+    second_homr_command: list[str] = field(default_factory=list)
     homr_timeout_seconds: int = 1800
     # Longest side of a page image handed to homr; larger photos are scaled down.
     max_image_side: int = 4000
@@ -58,6 +61,7 @@ class Settings:
             workdir=Path(_env("WORKDIR", "/tmp/musicraft-omr")),
             engine=_env("ENGINE", "homr"),
             homr_command=shlex.split(_env("HOMR_COMMAND", "homr")),
+            second_homr_command=shlex.split(_env("SECOND_HOMR_COMMAND", "")),
             homr_timeout_seconds=_env_int("HOMR_TIMEOUT_SECONDS", 1800),
             max_image_side=_env_int("MAX_IMAGE_SIDE", 4000),
         )

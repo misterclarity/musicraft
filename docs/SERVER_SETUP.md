@@ -44,8 +44,9 @@ docker compose up -d --build
 docker compose -f docker-compose.yml -f docker-compose.rocm.yml up -d --build
 ```
 
-The first build downloads homr and its models (about 150 MB), so it takes a few minutes. The service
-listens on `127.0.0.1:8070` only.
+The first build downloads two versions of homr and their models (about 1 GB in all; see
+[Two homr versions](#two-homr-versions)), so it takes a while. The service listens on
+`127.0.0.1:8070` only.
 
 Check it:
 
@@ -142,5 +143,22 @@ cd deploy
 docker compose up -d --build            # add -f docker-compose.rocm.yml for the GPU build
 ```
 
-To try a newer homr, change `HOMR_REF` in `services/omr/Dockerfile` (or `Dockerfile.rocm`) to another
-commit of <https://github.com/liebharc/homr> and rebuild.
+### Two homr versions
+
+homr versions read some pages differently, and neither is better everywhere. The image therefore
+holds two: a pinned commit of homr's main branch (on the GPU in the ROCm build; it also reports where
+each note is on the page), and the PyPI release 0.7.0 (on the CPU). When reading pages, the app can
+have every page read by both and keep the reading whose bars add up best; the wizard has a checkbox
+for it and the review says which reading it kept. **Settings → Test connection** lists both versions.
+
+Build arguments choose the versions (each a pip requirement):
+
+```bash
+cd deploy
+# Leave out the second version (the image is about 450 MB smaller, pages are read once):
+docker compose build --build-arg HOMR_SECOND_SPEC= && docker compose up -d
+# Another commit of the main branch (use homr[rocm] with the ROCm override):
+docker compose build --build-arg "HOMR_SPEC=homr[cpu] @ git+https://github.com/liebharc/homr@<commit>" && docker compose up -d
+# Back to the defaults:
+docker compose build && docker compose up -d
+```

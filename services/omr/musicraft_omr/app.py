@@ -13,7 +13,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import __version__
 from .config import Settings
-from .engine import create_engine
+from .engine import create_engine, create_second_engine
 from .imaging import UnsupportedFile, detect_page, open_image, sniff
 from .jobs import JobLimitError, JobManager, PageSpec
 
@@ -44,6 +44,15 @@ def _read_limited(upload: UploadFile, limit: int) -> bytes:
     if len(data) > limit:
         raise HTTPException(status_code=413, detail=f"The upload is larger than {limit // (1024 * 1024)} MB.")
     return data
+
+
+def _wants_second_reading(options: str | None) -> bool:
+    if not options:
+        return False
+    try:
+        return json.loads(options).get("second") is True
+    except (ValueError, AttributeError):
+        return False
 
 
 def _parse_specs(options: str | None) -> list[PageSpec] | None:
@@ -79,7 +88,8 @@ def _parse_specs(options: str | None) -> list[PageSpec] | None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     engine = create_engine(settings)
-    manager = JobManager(settings, engine)
+    second = create_second_engine(settings)
+    manager = JobManager(settings, engine, second)
     limit = settings.max_upload_mb * 1024 * 1024
 
     app = FastAPI(title="Musicraft OMR", version=__version__, docs_url=None, redoc_url=None)
@@ -102,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok",
             "version": __version__,
             "engine": engine.info(),
+            "secondEngine": second.info() if second else None,
             "limits": {"maxUploadMb": settings.max_upload_mb, "maxPages": settings.max_pages},
         }
 
@@ -137,7 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             remaining -= len(data)
             payload.append((upload.filename or "upload", data))
         try:
-            job = manager.submit(payload, specs)
+            job = manager.submit(payload, specs, second=_wants_second_reading(options))
         except UnsupportedFile as error:
             raise HTTPException(status_code=415, detail=str(error)) from error
         except JobLimitError as error:

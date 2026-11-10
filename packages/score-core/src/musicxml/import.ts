@@ -21,7 +21,9 @@ import {
 } from "../instruments";
 import {
   DYNAMICS,
+  measureIsEmpty,
   measureLengths,
+  renumberMeasures,
   SCORE_SCHEMA_VERSION,
   voiceLength,
   type Articulation,
@@ -164,6 +166,8 @@ class Importer {
   private imagePositions: Record<string, { x: number; y: number }> = {};
   private measures: MeasureInfo[] = [];
   private systemStarts = new Set<number>([0]);
+  /** Bars printed as a multi-bar rest, with the number of bars it lasts. */
+  private multiRests = new Map<number, number>();
 
   constructor(
     private root: Element,
@@ -181,6 +185,37 @@ class Importer {
 
   private warn(message: string) {
     this.warnings.add(message);
+  }
+
+  /**
+   * A multi-bar rest is printed as one bar with a number above it. MusicXML marks the first bar
+   * with <multiple-rest>N</multiple-rest> and still writes all N bars; some recognition engines
+   * (homr 0.7) write only the first one. Add the bars that are missing.
+   */
+  private expandMultiRests(score: Score) {
+    const isRest = (m: number) => score.parts.every((part) => measureIsEmpty(part.measures[m]));
+    let added = 0;
+    // From the last one back, so the bar indices of earlier ones stay valid.
+    for (const [m, bars] of [...this.multiRests].sort((a, b) => b[0] - a[0])) {
+      if (!isRest(m)) continue;
+      let present = 1;
+      while (present < bars) {
+        const next = m + present;
+        // The bars of one multi-bar rest are rests, carry no rest count of their own and share a line.
+        if (next >= score.measures.length || this.multiRests.has(next) || this.systemStarts.has(next) || !isRest(next)) break;
+        present++;
+      }
+      const missing = bars - present;
+      if (missing <= 0) continue;
+      const at = m + present;
+      score.measures.splice(at, 0, ...Array.from({ length: missing }, () => ({ id: newId("m"), number: "" })));
+      for (const part of score.parts) {
+        part.measures.splice(at, 0, ...Array.from({ length: missing }, () => emptyMeasureFor(part.staves)));
+      }
+      this.systemStarts = new Set([...this.systemStarts].map((s) => (s >= at ? s + missing : s)));
+      added += missing;
+    }
+    if (added) renumberMeasures(score);
   }
 
   run(): ImportResult {
@@ -210,6 +245,7 @@ class Importer {
         part.measures.push(emptyMeasureFor(part.staves));
       }
     }
+    this.expandMultiRests(score);
 
     const first = this.measures[0];
     if (first && !first.time) {
@@ -425,6 +461,10 @@ class Importer {
             }
             const st = childNumber(el, "staves");
             if (st && st > part.staves) part.staves = st;
+            const restBars = childNumber(child(el, "measure-style"), "multiple-rest");
+            if (restBars && restBars > 1 && restBars <= 500) {
+              this.multiRests.set(mIndex, Math.max(restBars, this.multiRests.get(mIndex) ?? 0));
+            }
             for (const clefEl of elements(el, "clef")) {
               const staff = Number(clefEl.getAttribute("number") ?? 1);
               const clef = readClef(clefEl);

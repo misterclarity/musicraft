@@ -19,6 +19,10 @@ export interface OmrPage {
   staffs: OmrStaff[];
   error: string | null;
   musicxml?: string | null;
+  /** The engine that read `musicxml`, e.g. "homr 0.7.0". */
+  readBy?: string | null;
+  /** The second engine's reading of the page, when the job asked for one. */
+  alternative?: { readBy: string; musicxml: string; staffs: OmrStaff[] } | null;
 }
 
 export interface OmrJob {
@@ -26,6 +30,9 @@ export interface OmrJob {
   status: "queued" | "preparing" | "running" | "done" | "failed" | "canceled";
   progress: { done: number; total: number; stage: string };
   error: string | null;
+  /** Whether every page is also read by the second engine, and why that failed if it did. */
+  second?: boolean;
+  secondError?: string | null;
   pages: OmrPage[];
 }
 
@@ -46,10 +53,10 @@ export async function detectCorners(settings: Settings, file: Blob): Promise<{ c
   return serverJson(settings, joinUrl(omrBaseUrl(settings), "/v1/pages/detect"), { method: "POST", body: form, timeoutMs: 60_000 });
 }
 
-export async function startJob(settings: Settings, files: File[], pages: PageRequest[]): Promise<OmrJob> {
+export async function startJob(settings: Settings, files: File[], pages: PageRequest[], options: { second?: boolean } = {}): Promise<OmrJob> {
   const form = new FormData();
   for (const file of files) form.append("files", file, file.name);
-  form.append("options", JSON.stringify({ pages }));
+  form.append("options", JSON.stringify({ pages, ...(options.second ? { second: true } : {}) }));
   return serverJson<OmrJob>(settings, joinUrl(omrBaseUrl(settings), "/v1/omr/jobs"), {
     method: "POST",
     body: form,

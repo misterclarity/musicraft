@@ -114,7 +114,15 @@ test("reads a photo with the recognition service, then proofreads it against the
   await expect(page.getByText("Read sheet music")).toBeVisible();
   await page.getByRole("button", { name: "Next" }).click();
   await page.getByText("Trumpet in B♭", { exact: true }).first().click();
+  // The server has a second homr: every page is read twice and the better reading kept.
+  await expect(page.getByRole("checkbox", { name: /Also read every page with homr 0\.7\.0/ })).toBeChecked();
   await page.getByRole("button", { name: /^Read \d+ page/ }).click();
+  await expect(page.getByTestId("scan-readings")).toContainText("page.png: kept the second reading (homr 0.7.0): 7 of 7 bars with notes add up, against 6 of 7 in the first (mock 1).");
+  // The tempo mark the recognition took for the title is dropped; the file name is used instead.
+  await expect(page.getByTestId("scan-repairs")).toContainText('"(d=112)" is not a title');
+  await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue("page");
+  const [raw] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Recognition output" }).click()]);
+  expect(readFileSync(await raw.path(), "utf8")).toContain("<work-title>(d=112)</work-title>");
   await page.getByRole("button", { name: "Open score" }).click();
   await expect(page.locator(".score-page svg").first()).toBeVisible();
   await expect(page.getByTestId("original-pages").locator("img").first()).toBeVisible();

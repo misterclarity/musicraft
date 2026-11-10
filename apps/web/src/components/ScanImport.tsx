@@ -22,13 +22,12 @@ import {
 import { useMediaQuery } from "@mantine/hooks";
 import {
   checkScore,
-  cleanupRecognized,
   getInstrument,
-  importMusicXml,
   markPickup,
   matchInstrument,
   mergeScores,
   prettyName,
+  repairRecognized,
   type Issue,
   type Score,
 } from "@musicraft/score-core";
@@ -36,6 +35,7 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconCrop,
+  IconDownload,
   IconPhotoPlus,
   IconPlugConnected,
   IconRotate,
@@ -43,10 +43,12 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PageRecord } from "../lib/db";
-import { baseName, detectKind } from "../lib/files";
+import { baseName, detectKind, downloadText, safeFileName } from "../lib/files";
 import { deleteJob, detectCorners, getJob, getPageImage, startJob, type Corners, type OmrJob } from "../lib/omr";
 import { openPdf } from "../lib/pdfPages";
 import { createProject } from "../lib/projects";
+import { chooseReading, type Reading } from "../lib/readings";
+import { detectOmr, type OmrEngineInfo } from "../lib/server";
 import { getSettings, isServerConfigured } from "../lib/settings";
 import { CornerEditor } from "./CornerEditor";
 import { instrumentOptions } from "./NewScoreModal";
@@ -70,6 +72,12 @@ interface Result {
   issues: Issue[];
   failed: { index: number; error: string }[];
   warnings: string[];
+  /** What was corrected automatically after recognition. */
+  repairs: string[];
+  /** What the recognition service returned for each page, for diagnosing recognition problems. */
+  raw: { name: string; musicxml: string }[];
+  /** Which reading of each page was kept, when every page was read twice. */
+  readings: string[];
 }
 
 const QUICK = ["piano", "trumpet-bb", "cornet-bb", "horn-f", "trombone", "tuba", "clarinet-bb", "alto-sax", "flute", "voice"];
@@ -101,6 +109,9 @@ export function ScanImport({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [saving, setSaving] = useState(false);
+  // A second homr on the server can read every page again; the better reading of each page is kept.
+  const [secondEngine, setSecondEngine] = useState<OmrEngineInfo | null>(null);
+  const [readTwice, setReadTwice] = useState(true);
   const cancelled = useRef(false);
   const addInput = useRef<HTMLInputElement>(null);
   const objectUrls = useRef<string[]>([]);
@@ -148,6 +159,16 @@ export function ScanImport({
   }
 
   useEffect(() => {
+    if (!configured) return;
+    const controller = new AbortController();
+    detectOmr(settings, controller.signal)
+      .then((health) => setSecondEngine(health.secondEngine?.available ? health.secondEngine : null))
+      .catch(() => setSecondEngine(null));
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     void addFiles(initialFiles, 0).finally(() => setLoadingPages(false));
     const urls = objectUrls.current;
     return () => {
@@ -184,6 +205,7 @@ export function ScanImport({
         settings,
         files,
         selected.map((it) => ({ file: it.file, page: it.pdfPage ?? 0, corners: it.corners, rotation: it.rotation })),
+        { second: readTwice && !!secondEngine },
       );
       setJob(current);
       while (!["done", "failed", "canceled"].includes(current.status)) {
@@ -211,13 +233,23 @@ export function ScanImport({
     const layouts: { page: number; staffs: OmrJob["pages"][number]["staffs"]; systemStarts: number[]; notePositions: Record<string, { x: number; y: number }>; staves: number }[] = [];
     const failed: Result["failed"] = [];
     const warnings = new Set<string>();
+    const raw: Result["raw"] = [];
+    const readings: string[] = [];
+    if (done.secondError) warnings.add(`${done.secondError} The first reading was used.`);
     for (const page of done.pages) {
       if (page.status !== "done" || !page.musicxml) {
         failed.push({ index: page.index, error: page.error ?? "No music recognised." });
         continue;
       }
+      const name = selected[page.index]?.label ?? `Page ${page.index + 1}`;
+      const candidates: Reading[] = [{ readBy: page.readBy, musicxml: page.musicxml, staffs: page.staffs }];
+      if (page.alternative) candidates.push(page.alternative);
+      for (const reading of candidates) {
+        raw.push({ name: candidates.length > 1 && reading.readBy ? `${name} (${reading.readBy})` : name, musicxml: reading.musicxml });
+      }
       try {
-        const imported = importMusicXml(page.musicxml, { instruments: [instrument], detectPickups: false, sequentialVoices: true });
+        const { reading, imported, note } = chooseReading(candidates, instrument, name);
+        if (note) readings.push(note);
         imported.warnings.filter((w) => !w.includes("4/4")).forEach((w) => warnings.add(w));
         if (imported.warnings.some((w) => w.includes("4/4")) && page.index === done.pages[0]?.index) {
           warnings.add("No time signature was printed on the first page, so 4/4 was assumed. Change it if needed.");
@@ -225,11 +257,11 @@ export function ScanImport({
         scores.push(imported.score);
         layouts.push({
           page: page.index,
-          staffs: page.staffs,
+          staffs: reading.staffs,
           systemStarts: imported.systemStarts,
           notePositions: imported.imagePositions,
           // homr reports either one box per staff or one per system (grand staff): use the ratio.
-          staves: Math.max(1, Math.round(page.staffs.length / Math.max(1, imported.systemStarts.length))),
+          staves: Math.max(1, Math.round(reading.staffs.length / Math.max(1, imported.systemStarts.length))),
         });
       } catch (e) {
         failed.push({ index: page.index, error: (e as Error).message });
@@ -237,7 +269,8 @@ export function ScanImport({
     }
     if (!scores.length) throw new Error(failed[0]?.error ?? "No music was recognised.");
     const merged = mergeScores(scores);
-    const score = markPickup(cleanupRecognized(merged.score));
+    const repaired = repairRecognized(merged.score);
+    const score = markPickup(repaired.score);
     const recognisedTitle = score.meta.title && score.meta.title !== "Untitled" && score.meta.title !== "Recognised page" ? score.meta.title : null;
     const finalTitle = titleEdited || !recognisedTitle ? title.trim() || "Scanned score" : recognisedTitle;
     const named = { ...score, meta: { ...score.meta, title: finalTitle } };
@@ -257,14 +290,24 @@ export function ScanImport({
           staffsPerSystem: layout.staves,
           measureRange: merged.ranges[i],
           systemStarts: layout.systemStarts,
+          // Bars keep their ids through the repairs, so look them up where the page put them.
           systemStartIds: layout.systemStarts
-            .map((relative) => named.measures[(merged.ranges[i]?.[0] ?? 0) + relative]?.id)
+            .map((relative) => merged.score.measures[(merged.ranges[i]?.[0] ?? 0) + relative]?.id)
             .filter((id): id is string => !!id),
           notePositions: layout.notePositions,
         },
       });
     }
-    return { score: named, pages, issues: checkScore(named, { comfortableRange: false }), failed, warnings: [...warnings] };
+    return {
+      score: named,
+      pages,
+      issues: checkScore(named, { comfortableRange: false }),
+      failed,
+      warnings: [...warnings],
+      repairs: repaired.notes,
+      raw,
+      readings,
+    };
   }
 
   async function open() {
@@ -429,6 +472,15 @@ export function ScanImport({
                   setTitleEdited(true);
                 }}
               />
+              {secondEngine && (
+                <Checkbox
+                  checked={readTwice}
+                  onChange={(e) => setReadTwice(e.currentTarget.checked)}
+                  label={`Also read every page with ${secondEngine.name} ${secondEngine.version ?? ""}`.trim() + " and keep the better reading"}
+                  description="Recognition versions read some pages differently. This takes longer: the second reading runs on the server's processor."
+                  data-testid="read-twice"
+                />
+              )}
               <Group justify="flex-end">
                 <Button variant="default" onClick={() => setStep(0)}>
                   Back
@@ -501,18 +553,56 @@ export function ScanImport({
                     {w}
                   </Alert>
                 ))}
+                {result.readings.length > 0 && (
+                  <Alert color="blue" variant="light" title="Two readings compared" data-testid="scan-readings">
+                    <Stack gap={2}>
+                      {result.readings.map((r) => (
+                        <Text key={r} size="sm">
+                          {r}
+                        </Text>
+                      ))}
+                    </Stack>
+                  </Alert>
+                )}
+                {result.repairs.length > 0 && (
+                  <Alert color="teal" variant="light" title="Corrected automatically" data-testid="scan-repairs">
+                    <Stack gap={2}>
+                      {result.repairs.map((r) => (
+                        <Text key={r} size="sm">
+                          {r}
+                        </Text>
+                      ))}
+                    </Stack>
+                  </Alert>
+                )}
                 <Alert color={result.issues.length ? "blue" : "green"} variant="light">
                   {result.issues.length
                     ? `${result.issues.length} bar${result.issues.length > 1 ? "s" : ""} look suspicious (for example, notes that don't add up to the time signature). They are listed under Checks and marked in the score; compare them with the original page shown next to the score.`
                     : "No obvious problems found. Still compare the score with the original page."}
                 </Alert>
-                <Group justify="flex-end">
-                  <Button variant="default" onClick={() => setStep(1)}>
-                    Back
-                  </Button>
-                  <Button onClick={() => void open()} loading={saving}>
-                    Open score
-                  </Button>
+                <Group justify="space-between">
+                  <Tooltip label="What the recognition service read, before any corrections: useful when reporting a recognition problem">
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      leftSection={<IconDownload size={14} />}
+                      onClick={() =>
+                        result.raw.forEach((page) =>
+                          downloadText(page.musicxml, `${safeFileName(`${title.trim() || "scan"} - ${page.name}`)} (recognised).musicxml`, "application/vnd.recordare.musicxml+xml"),
+                        )
+                      }
+                    >
+                      Recognition output
+                    </Button>
+                  </Tooltip>
+                  <Group>
+                    <Button variant="default" onClick={() => setStep(1)}>
+                      Back
+                    </Button>
+                    <Button onClick={() => void open()} loading={saving}>
+                      Open score
+                    </Button>
+                  </Group>
                 </Group>
               </Stack>
             )}

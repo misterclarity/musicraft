@@ -164,3 +164,120 @@ def test_simultaneous_uploads_start_one_worker(tmp_path: Path, monkeypatch: pyte
     for caller in callers:
         caller.join()
     assert started == ["omr-worker"]
+
+
+def _finish(manager, job):  # type: ignore[no-untyped-def]
+    for _ in range(200):
+        if job.status in ("done", "failed", "canceled"):
+            return job
+        time.sleep(0.05)
+    raise AssertionError("job did not finish")
+
+
+class _FailingEngine:
+    """Reads nothing, or breaks down altogether."""
+
+    name = "broken"
+
+    def __init__(self, crash: bool = False) -> None:
+        self.crash = crash
+
+    def info(self) -> dict[str, object]:
+        return {"name": self.name, "version": "1", "available": True, "device": "cpu"}
+
+    def recognize(self, folder, pages, progress, cancelled):  # type: ignore[no-untyped-def]
+        from musicraft_omr.engine import PageOutcome
+
+        if self.crash:
+            raise RuntimeError("out of memory")
+        return [PageOutcome(None, [], "No music was recognised on this page.") for _ in pages]
+
+
+def test_second_reading_of_every_page(tmp_path: Path) -> None:
+    from musicraft_omr.engine import FAKE_MUSICXML, FakeEngine
+    from musicraft_omr.jobs import JobManager
+
+    settings = Settings(engine="fake", workdir=tmp_path)
+    other = FAKE_MUSICXML.replace("Recognised page", "Second reading")
+    manager = JobManager(settings, FakeEngine(settings), FakeEngine(settings, other, version="2"))
+    job = _finish(manager, manager.submit([("p.png", png()), ("q.png", png())], None, second=True))
+    body = job.to_json()
+    assert body["status"] == "done" and body["second"] is True and body["secondError"] is None
+    assert body["progress"]["done"] == body["progress"]["total"] == 4
+    page = body["pages"][0]
+    assert page["readBy"] == "fake 0" and "Recognised page" in page["musicxml"]
+    assert page["alternative"]["readBy"] == "fake 2"
+    assert "Second reading" in page["alternative"]["musicxml"]
+    assert page["alternative"]["staffs"][0]["width"] == 0.84
+    # Without asking, a page is read once.
+    once = _finish(manager, manager.submit([("p.png", png())], None)).to_json()
+    assert (
+        once["second"] is False and once["progress"]["total"] == 1 and once["pages"][0]["alternative"] is None
+    )
+
+
+def test_second_reading_fills_in_or_fails_quietly(tmp_path: Path) -> None:
+    from musicraft_omr.engine import FakeEngine
+    from musicraft_omr.jobs import JobManager
+
+    settings = Settings(engine="fake", workdir=tmp_path)
+    # The first engine reads nothing: the second engine's reading is used.
+    rescued = JobManager(settings, _FailingEngine(), FakeEngine(settings, version="2"))
+    job = _finish(rescued, rescued.submit([("p.png", png())], None, second=True)).to_json()
+    assert job["status"] == "done"
+    assert job["pages"][0]["status"] == "done" and job["pages"][0]["readBy"] == "fake 2"
+    assert job["pages"][0]["error"] is None and job["pages"][0]["alternative"] is None
+    # The first engine breaks down altogether: the second engine still reads the pages.
+    crashed = JobManager(settings, _FailingEngine(crash=True), FakeEngine(settings, version="2"))
+    job = _finish(crashed, crashed.submit([("p.png", png())], None, second=True)).to_json()
+    assert job["status"] == "done" and job["pages"][0]["readBy"] == "fake 2"
+    # The second engine breaks down: the first reading stands, with a note.
+    broken = JobManager(settings, FakeEngine(settings), _FailingEngine(crash=True))
+    job = _finish(broken, broken.submit([("p.png", png())], None, second=True)).to_json()
+    assert job["status"] == "done" and job["pages"][0]["readBy"] == "fake 0"
+    assert job["secondError"] == "The second reading failed: out of memory"
+
+
+def test_second_reading_through_the_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from musicraft_omr import app as app_module
+    from musicraft_omr.engine import FakeEngine
+
+    settings = Settings(engine="fake", workdir=tmp_path)
+    plain = TestClient(create_app(settings))
+    assert plain.get("/health").json()["secondEngine"] is None
+    # Asking for a second reading without a second engine reads once.
+    job = plain.post(
+        "/v1/omr/jobs", files=[("files", ("p.png", png(), "image/png"))], data={"options": '{"second": true}'}
+    )
+    assert job.json()["second"] is False
+
+    monkeypatch.setattr(app_module, "create_second_engine", lambda s: FakeEngine(s, version="2"))
+    client = TestClient(create_app(settings))
+    assert client.get("/health").json()["secondEngine"]["version"] == "2"
+    job = client.post(
+        "/v1/omr/jobs", files=[("files", ("p.png", png(), "image/png"))], data={"options": '{"second": true}'}
+    )
+    assert job.json()["second"] is True and job.json()["progress"]["total"] == 2
+    done = wait_for(client, job.json()["id"])
+    assert done["pages"][0]["alternative"]["readBy"] == "fake 2"
+
+
+def test_second_engine_reports_its_own_version(tmp_path: Path) -> None:
+    from musicraft_omr.engine import HomrEngine, create_second_engine
+
+    bin_dir = tmp_path / "venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    homr = bin_dir / "homr"
+    homr.write_text("#!/bin/sh\nexit 0\n")
+    # Stands in for the Python of the other installation.
+    python = bin_dir / "python"
+    python.write_text('#!/bin/sh\necho \'{"version": "0.7.0", "providers": ["CPUExecutionProvider"]}\'\n')
+    for script in (homr, python):
+        script.chmod(0o755)
+    settings = Settings(engine="homr", workdir=tmp_path, second_homr_command=[str(homr)])
+    second = create_second_engine(settings)
+    assert isinstance(second, HomrEngine)
+    assert second.info() == {"name": "homr", "version": "0.7.0", "available": True, "device": "cpu"}
+    assert create_second_engine(Settings(engine="homr", workdir=tmp_path)) is None
+    missing = Settings(engine="homr", workdir=tmp_path, second_homr_command=[str(tmp_path / "nowhere")])
+    assert create_second_engine(missing) is None

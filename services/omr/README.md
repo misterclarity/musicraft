@@ -23,4 +23,11 @@ Environment variables (all optional):
 | `MUSICRAFT_OMR_WORKDIR` | `/tmp/musicraft-omr` | Where uploads and results are stored while a job lives. |
 | `MUSICRAFT_OMR_ENGINE` | `homr` | `fake` returns a fixed score, for tests and demos. |
 | `MUSICRAFT_OMR_HOMR_COMMAND` | `homr` | Command that runs homr (e.g. a path inside a virtual environment). |
+| `MUSICRAFT_OMR_SECOND_HOMR_COMMAND` | — (images: `/opt/homr-second/bin/homr`) | A second homr installation, in its own environment, that reads every page again when a job asks for it (`"second": true` in the options); the app keeps the better reading. |
 | `MUSICRAFT_OMR_HOMR_TIMEOUT_SECONDS` | `1800` | Longest a recognition run may take. |
+
+## homr versions
+
+The Docker images install homr from a pinned commit of its main branch (`HOMR_SPEC`) and the PyPI
+release 0.7.0 in `/opt/homr-second` (`HOMR_SECOND_SPEC`; empty leaves it out). Both build arguments
+are pip requirements. See [Two homr versions](../../docs/SERVER_SETUP.md#two-homr-versions).
