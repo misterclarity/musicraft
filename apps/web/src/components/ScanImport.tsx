@@ -78,6 +78,8 @@ interface Result {
   raw: { name: string; musicxml: string }[];
   /** Which reading of each page was kept, when every page was read twice. */
   readings: string[];
+  /** The score before the automatic corrections, kept in the project's history. */
+  unrepaired: Score;
 }
 
 const QUICK = ["piano", "trumpet-bb", "cornet-bb", "horn-f", "trombone", "tuba", "clarinet-bb", "alto-sax", "flute", "voice"];
@@ -274,6 +276,7 @@ export function ScanImport({
     const recognisedTitle = score.meta.title && score.meta.title !== "Untitled" && score.meta.title !== "Recognised page" ? score.meta.title : null;
     const finalTitle = titleEdited || !recognisedTitle ? title.trim() || "Scanned score" : recognisedTitle;
     const named = { ...score, meta: { ...score.meta, title: finalTitle } };
+    const unrepaired = markPickup(merged.score);
     const pages: Result["pages"] = [];
     for (let i = 0; i < layouts.length; i++) {
       const layout = layouts[i]!;
@@ -307,6 +310,7 @@ export function ScanImport({
       repairs: repaired.notes,
       raw,
       readings,
+      unrepaired: { ...unrepaired, meta: { ...unrepaired.meta, title: finalTitle } },
     };
   }
 
@@ -316,7 +320,11 @@ export function ScanImport({
     try {
       const name = title.trim() || "Scanned score";
       const score = { ...result.score, meta: { ...result.score.meta, title: name } };
-      const id = await createProject(name, score, "scan", result.pages);
+      // The reading before the automatic corrections stays in the history, to go back to.
+      const before = result.repairs.length
+        ? { score: { ...result.unrepaired, meta: { ...result.unrepaired.meta, title: name } }, label: "Recognised from scan, before automatic corrections" }
+        : undefined;
+      const id = await createProject(name, score, "scan", result.pages, before && "Corrected automatically", before);
       onDone(id);
     } catch (e) {
       setError((e as Error).message);

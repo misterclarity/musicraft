@@ -25,7 +25,8 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
    each page). Musicraft then corrects what the music itself gives away and lists it before you
    open the score: a misread time signature (e.g. 12/8 read as 2/2, when the bars add up to 12/8), a
    bass clef read in a part for an instrument that never uses one, a tempo mark taken for the title.
-   The original pages stay next to the score so you can compare bar by bar.
+   The reading before these corrections stays in the History tab. The original pages stay next to
+   the score so you can compare bar by bar.
 2. **Check it.** The Checks tab lists bars that don't add up and notes outside an instrument's range.
    For scanned parts it also lists the rests: recognition reads a multi-bar rest (one bar with a number
    above it) as a single bar, so click each rest to see it on the original and type in how many bars it

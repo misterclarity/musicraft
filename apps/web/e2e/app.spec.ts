@@ -126,6 +126,10 @@ test("reads a photo with the recognition service, then proofreads it against the
   await page.getByRole("button", { name: "Open score" }).click();
   await expect(page.locator(".score-page svg").first()).toBeVisible();
   await expect(page.getByTestId("original-pages").locator("img").first()).toBeVisible();
+  // The reading before the automatic corrections stays in the history.
+  await page.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByText("Corrected automatically")).toBeVisible();
+  await expect(page.getByText("Recognised from scan, before automatic corrections")).toBeVisible();
 
   await page.getByRole("tab", { name: /Checks/ }).click();
   await page.getByRole("button", { name: /Proofread against the original/ }).click();

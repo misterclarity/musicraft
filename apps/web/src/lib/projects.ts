@@ -49,17 +49,16 @@ export async function createProject(
   source: ProjectSource,
   pages: Omit<PageRecord, "id" | "projectId">[] = [],
   firstVersionLabel?: string,
+  /** An earlier state to keep in the history, e.g. a scan before its automatic corrections. */
+  before?: { score: Score; label: string },
 ): Promise<string> {
   const id = newId("x");
   const now = Date.now();
+  const author = source === "scan" ? "recognition" : source === "new" ? "you" : "import";
   await db.transaction("rw", db.projects, db.versions, db.pages, async () => {
     await db.projects.add({ id, name, createdAt: now, updatedAt: now, source, score });
-    await addVersion(
-      id,
-      score,
-      firstVersionLabel ?? (source === "scan" ? "Recognised from scan" : "Imported"),
-      source === "scan" ? "recognition" : source === "new" ? "you" : "import",
-    );
+    if (before) await addVersion(id, before.score, before.label, author, now - 1);
+    await addVersion(id, score, firstVersionLabel ?? (source === "scan" ? "Recognised from scan" : "Imported"), author, now);
     for (const page of pages) await db.pages.add({ ...page, projectId: id });
   });
   void requestPersistentStorage();
@@ -105,9 +104,9 @@ export interface VersionSummary {
   author: VersionAuthor;
 }
 
-export async function addVersion(projectId: string, score: Score, label: string, author: VersionAuthor): Promise<void> {
+export async function addVersion(projectId: string, score: Score, label: string, author: VersionAuthor, createdAt = Date.now()): Promise<void> {
   const data = gzipSync(strToU8(JSON.stringify(score)), { level: 6 });
-  await db.versions.add({ projectId, createdAt: Date.now(), label, author, data });
+  await db.versions.add({ projectId, createdAt, label, author, data });
   const count = await db.versions.where("projectId").equals(projectId).count();
   if (count > MAX_VERSIONS) {
     const oldest = await db.versions

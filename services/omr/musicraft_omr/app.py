@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import threading
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -89,6 +90,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     engine = create_engine(settings)
     second = create_second_engine(settings)
+    if second is not None:
+        # Asking the second installation for its version takes a moment: do it now, not in /health.
+        threading.Thread(target=second.info, name="second-engine-info", daemon=True).start()
     manager = JobManager(settings, engine, second)
     limit = settings.max_upload_mb * 1024 * 1024
 
