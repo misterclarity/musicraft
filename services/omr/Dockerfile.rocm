@@ -21,6 +21,9 @@ RUN apt-get update \
 
 RUN python3 -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
+# Ubuntu's pip gives up on a download after 15 s without data and cannot resume it;
+# this build fetches several hundred MB, so a single network stall used to fail it.
+ENV PIP_DEFAULT_TIMEOUT=60
 
 # The ROCm extra pulls onnxruntime-rocm for Python 3.12 (Ubuntu 24.04's Python).
 # homr's own downloader times out after 5 s; fetch the models patiently first, then let
@@ -30,6 +33,13 @@ RUN pip install "homr[rocm] @ git+https://github.com/liebharc/homr@${HOMR_REF}" 
  && python /tmp/fetch_homr_models.py --gpu \
  && homr --init \
  && rm /tmp/fetch_homr_models.py
+
+# onnxruntime-rocm's SkipLayerNormalization kernel rejects the broadcast input homr's decoder
+# uses, so every page failed on the GPU; rewrite those nodes as Add + LayerNormalization.
+COPY scripts/unfuse_skipln.py /tmp/unfuse_skipln.py
+RUN pip install onnx \
+ && python /tmp/unfuse_skipln.py "$(python -c 'import homr, os; print(os.path.dirname(homr.__file__))')"/transformer/decoder_*.onnx \
+ && rm /tmp/unfuse_skipln.py
 
 WORKDIR /app
 COPY pyproject.toml README.md ./

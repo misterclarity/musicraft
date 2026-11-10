@@ -33,6 +33,9 @@ Then, from the repository folder:
 cd deploy
 openssl rand -hex 32 > omr_internal_key.txt
 chmod 600 omr_internal_key.txt
+# The CPU image runs as user 10001, which must be able to read the key
+# (without this the container exits at start-up). Needs the `acl` package.
+setfacl -m u:10001:r omr_internal_key.txt
 
 # CPU build (works everywhere):
 docker compose up -d --build

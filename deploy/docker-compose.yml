@@ -1,5 +1,6 @@
 # Recognition service for Musicraft (CPU). From this folder:
 #   openssl rand -hex 32 > omr_internal_key.txt && chmod 600 omr_internal_key.txt
+#   setfacl -m u:10001:r omr_internal_key.txt   # the image's omr user must read it
 #   docker compose up -d --build
 # For the AMD GPU build add the ROCm override:
 #   docker compose -f docker-compose.yml -f docker-compose.rocm.yml up -d --build
@@ -20,8 +21,9 @@ services:
       MUSICRAFT_OMR_MAX_PAGES: "40"
     secrets:
       - omr_internal_key
+    # A tmpfs is mounted root-owned (mode 755); hand it to the image's omr user (uid 10001).
     tmpfs:
-      - /tmp/musicraft-omr:size=2g
+      - /tmp/musicraft-omr:size=2g,uid=10001,gid=10001,mode=0700
 
 secrets:
   omr_internal_key:
