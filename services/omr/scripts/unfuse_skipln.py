@@ -31,7 +31,9 @@ def unfuse(path: str) -> int:
         x, skip, gamma, beta, bias = (list(n.input) + [""] * 5)[:5]
         outs = (list(n.output) + [""] * 4)[:4]
         if (outs[1] and outs[1] in consumed) or (outs[2] and outs[2] in consumed):
-            raise SystemExit(f"{path}: {n.name} uses mean/inv_std_var outputs, which this script doesn't handle")
+            raise SystemExit(
+                f"{path}: {n.name} uses mean/inv_std_var outputs, which this script doesn't handle"
+            )
         total = outs[3] or f"{n.name}_sum"
         if bias:
             nodes.append(helper.make_node("Add", [x, skip], [f"{n.name}_xs"], name=f"{n.name}_add_skip"))
