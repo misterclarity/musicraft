@@ -26,6 +26,7 @@ import {
 } from "../lib/server";
 import { diagnoseRecognition, type Diagnosis } from "../lib/diagnose";
 import { useSettings, type Settings, type VisionOverride } from "../lib/settings";
+import { Tip } from "./Tip";
 
 interface CheckResult {
   llm?: LlmCapabilities;
@@ -104,15 +105,17 @@ export function SettingsModal({ opened, onClose }: { opened: boolean; onClose: (
         </Text>
 
         <Group>
-          <Button
-            leftSection={<IconPlugConnected size={16} />}
-            variant="light"
-            loading={checking}
-            onClick={testConnection}
-            disabled={!draft.serverUrl.trim()}
-          >
-            Test connection
-          </Button>
+          <Tip label={draft.serverUrl.trim() ? "Check that the language model and the recognition service answer, and what they offer" : "Enter your server's address first"}>
+            <Button
+              leftSection={<IconPlugConnected size={16} />}
+              variant="light"
+              loading={checking}
+              onClick={() => draft.serverUrl.trim() && void testConnection()}
+              data-disabled={!draft.serverUrl.trim() || undefined}
+            >
+              Test connection
+            </Button>
+          </Tip>
         </Group>
 
         {result && <ConnectionReport result={result} />}
@@ -138,6 +141,7 @@ export function SettingsModal({ opened, onClose }: { opened: boolean; onClose: (
             <Text size="sm" fw={500}>
               Vision (images)
             </Text>
+            <Tip label="Whether the model accepts images (for proofreading and looking at pages). Auto asks the server; set it if the server doesn't say">
             <SegmentedControl
               value={draft.visionOverride}
               onChange={(v) => set({ visionOverride: v as VisionOverride })}
@@ -147,14 +151,19 @@ export function SettingsModal({ opened, onClose }: { opened: boolean; onClose: (
                 { value: "off", label: "Off" },
               ]}
             />
+            </Tip>
           </Stack>
         </Group>
 
         <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={save}>Save</Button>
+          <Tip label="Close without saving changes">
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+          </Tip>
+          <Tip label="Keep these settings in this browser (the API key never leaves it except to your server)">
+            <Button onClick={save}>Save</Button>
+          </Tip>
         </Group>
       </Stack>
     </Modal>

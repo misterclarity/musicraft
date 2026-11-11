@@ -1,5 +1,26 @@
 import type { InstrumentFamily } from "@musicraft/score-core";
 
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * How parts are placed in space: "stereo" spreads them left to right from their seats, as heard
+ * from the conductor; "room" places them in 3D around a listener that can move (the stage view).
+ */
+export type SpaceMode = "stereo" | "room";
+/** The acoustics: none, a concert hall's reverberation, or an open-air bandstand's short echo. */
+export type Room = "dry" | "hall" | "bandstand";
+
+/** One part's way to the speakers: volume, position, and a send to the room's reverberation. */
+interface Channel {
+  input: GainNode;
+  panner: PannerNode;
+  send: GainNode;
+}
+
 /**
  * A small WebAudio synthesizer with a recognisable sound per instrument family. Good enough to
  * proofread and audition arrangements without downloading sample libraries.
@@ -7,7 +28,12 @@ import type { InstrumentFamily } from "@musicraft/score-core";
 export class Synth {
   readonly context: AudioContext;
   private readonly output: GainNode;
+  private readonly reverb: ConvolverNode;
+  private readonly reverbReturn: GainNode;
   private active = new Set<AudioScheduledSourceNode>();
+  private channels = new Map<string, Channel>();
+  private mode: SpaceMode = "stereo";
+  private room: Room = "dry";
 
   constructor() {
     this.context = new AudioContext({ latencyHint: "interactive" });
@@ -17,19 +43,96 @@ export class Synth {
     this.output = this.context.createGain();
     this.output.gain.value = 0.8;
     this.output.connect(compressor).connect(this.context.destination);
+    this.reverb = this.context.createConvolver();
+    this.reverbReturn = this.context.createGain();
+    this.reverbReturn.gain.value = 0;
+    this.reverb.connect(this.reverbReturn).connect(this.output);
+    this.setListener({ x: 0, y: 1.6, z: 1.5 }, { x: 0, y: 0, z: -1 });
   }
 
   setVolume(volume: number) {
     this.output.gain.setTargetAtTime(Math.max(0, Math.min(1, volume)), this.context.currentTime, 0.02);
   }
 
-  /** Schedule one note. `time` is in AudioContext seconds. */
-  note(time: number, duration: number, midi: number, velocity: number, family: InstrumentFamily) {
+  /** A part's channel, created on first use. */
+  private channel(id: string): Channel {
+    let channel = this.channels.get(id);
+    if (!channel) {
+      const ctx = this.context;
+      const input = ctx.createGain();
+      const panner = ctx.createPanner();
+      const send = ctx.createGain();
+      input.connect(panner).connect(this.output);
+      input.connect(send).connect(this.reverb);
+      channel = { input, panner, send };
+      this.configurePanner(panner);
+      send.gain.value = this.room === "dry" ? 0 : 1;
+      this.channels.set(id, channel);
+    }
+    return channel;
+  }
+
+  private configurePanner(panner: PannerNode) {
+    // In a room, sound fades with distance and is heard through the head (HRTF); in stereo only
+    // the direction counts, so every part stays as loud as before.
+    panner.panningModel = this.mode === "room" ? "HRTF" : "equalpower";
+    panner.distanceModel = "inverse";
+    panner.refDistance = this.mode === "room" ? 2 : 1;
+    // Gentler than nature, so the balcony is still worth listening from.
+    panner.rolloffFactor = this.mode === "room" ? 0.5 : 0;
+  }
+
+  setSpace(mode: SpaceMode, room: Room) {
+    this.mode = mode;
+    for (const channel of this.channels.values()) this.configurePanner(channel.panner);
+    if (room !== this.room) {
+      this.room = room;
+      if (room !== "dry") this.reverb.buffer = impulseResponse(this.context, room === "hall" ? 2.6 : 0.9, room === "hall" ? 2.2 : 4);
+      const wet = room === "hall" ? 0.32 : room === "bandstand" ? 0.12 : 0;
+      this.reverbReturn.gain.setTargetAtTime(wet, this.context.currentTime, 0.05);
+      for (const channel of this.channels.values()) channel.send.gain.value = room === "dry" ? 0 : 1;
+    }
+  }
+
+  /** Volume of a part (0 silences it at once, also notes already scheduled). */
+  setChannelGain(id: string, gain: number) {
+    this.channel(id).input.gain.setTargetAtTime(Math.max(0, gain), this.context.currentTime, 0.02);
+  }
+
+  /** Where a part sits, in metres (x to the audience's right, y up, z towards the audience). */
+  setChannelPosition(id: string, position: Vec3) {
+    const panner = this.channel(id).panner;
+    setVec(panner, "position", position);
+  }
+
+  /** Where the listener is and which way they face. */
+  setListener(position: Vec3, forward: Vec3, up: Vec3 = { x: 0, y: 1, z: 0 }) {
+    const listener = this.context.listener;
+    if (listener.positionX) {
+      const t = this.context.currentTime;
+      listener.positionX.setTargetAtTime(position.x, t, 0.03);
+      listener.positionY.setTargetAtTime(position.y, t, 0.03);
+      listener.positionZ.setTargetAtTime(position.z, t, 0.03);
+      listener.forwardX.setTargetAtTime(forward.x, t, 0.03);
+      listener.forwardY.setTargetAtTime(forward.y, t, 0.03);
+      listener.forwardZ.setTargetAtTime(forward.z, t, 0.03);
+      listener.upX.setTargetAtTime(up.x, t, 0.03);
+      listener.upY.setTargetAtTime(up.y, t, 0.03);
+      listener.upZ.setTargetAtTime(up.z, t, 0.03);
+    } else {
+      // Firefox has only the older methods.
+      listener.setPosition(position.x, position.y, position.z);
+      listener.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+    }
+  }
+
+  /** Schedule one note. `time` is in AudioContext seconds; `channelId` routes it through that part's channel. */
+  note(time: number, duration: number, midi: number, velocity: number, family: InstrumentFamily, channelId?: string) {
     const ctx = this.context;
     const frequency = 440 * 2 ** ((midi - 69) / 12);
     const level = 0.22 * (velocity / 127) ** 1.4;
     const gain = ctx.createGain();
-    gain.connect(this.output);
+    gain.connect(channelId ? this.channel(channelId).input : this.output);
     const end = time + Math.max(0.03, duration);
     const sources: AudioScheduledSourceNode[] = [];
     const osc = (type: OscillatorType, freq: number, target: AudioNode, detune = 0) => {
@@ -156,6 +259,28 @@ export class Synth {
     }
     this.active.clear();
   }
+}
+
+function setVec(panner: PannerNode, what: "position", v: Vec3) {
+  if (panner.positionX) {
+    const t = panner.context.currentTime;
+    panner.positionX.setTargetAtTime(v.x, t, 0.03);
+    panner.positionY.setTargetAtTime(v.y, t, 0.03);
+    panner.positionZ.setTargetAtTime(v.z, t, 0.03);
+  } else if (what === "position") {
+    panner.setPosition(v.x, v.y, v.z);
+  }
+}
+
+/** A room's echo as decaying stereo noise: `seconds` long, fading faster with a larger `decay`. */
+function impulseResponse(ctx: BaseAudioContext, seconds: number, decay: number): AudioBuffer {
+  const length = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+  const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** decay;
+  }
+  return buffer;
 }
 
 function envelope(param: AudioParam, start: number, end: number, peak: number, attack: number, decay: number, sustain: number) {

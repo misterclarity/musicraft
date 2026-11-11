@@ -47,8 +47,26 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
      bars 17–24 down an octave". The model works through Musicraft's music tools on a draft; changed
      bars turn green, you can play them back, and you keep or discard the result. Select bars or notes
      first to talk about "this".
-4. **Export** PDF (score or parts), MusicXML (written or concert pitch), MXL, MIDI or MEI. Every change
+4. **Hear and see it on the stage.** Switch the main view from *Score* to *Stage* to see the parts as
+   players in a 3D concert hall or on a park bandstand, seated by section like a real band or
+   orchestra. What the stage adds to the score:
+   - **Spatial sound**: each part plays from its seat, and you hear it from wherever the camera is:
+     the conductor's podium, the front row, the balcony, or a player's own chair (*View* menu). Walk
+     around with W A S D and drag to look. The hall adds its reverberation; the bandstand is drier.
+   - **Who plays what**: during playback each player lights up with their notes, brighter when they
+     play louder, and notes float up from the instruments.
+   - **Range meters** beside each player: the instrument's comfortable range in green, the notes the
+     part uses in white (orange or red when they go beyond comfortable or possible), and a dot for
+     the note being played.
+   - **Players to work with**: click one to select their part, then solo or mute it, change its
+     volume or instrument, or jump to it in the score. Turn on *Move players* to drag players to other
+     seats; their sound moves with them (and the score view's stereo follows the seating too).
+   - It works in a VR headset as well (the goggles button).
+5. **Export** PDF (score or parts), MusicXML (written or concert pitch), MXL, MIDI or MEI. Every change
    can be undone, and the History tab keeps versions.
+
+Every button explains itself in a tooltip when you point at it, including why it can't be used yet
+(for example, "Select a note or rest first").
 
 ### What the language model needs
 

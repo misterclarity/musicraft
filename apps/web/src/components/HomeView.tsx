@@ -44,6 +44,7 @@ import {
 } from "../lib/projects";
 import { isServerConfigured, useSettings } from "../lib/settings";
 import { NewScoreModal } from "./NewScoreModal";
+import { Tip } from "./Tip";
 
 const ACCEPT = ".musicxml,.xml,.mxl,.musicraft,.pdf,image/*";
 
@@ -131,9 +132,11 @@ export function HomeView({
           <Alert icon={<IconPlugConnected size={18} />} title="Connect your server" color="blue" variant="light">
             <Group justify="space-between" align="center">
               <Text size="sm">Reading PDFs and photos and the AI assistant need your server. MusicXML works without it.</Text>
-              <Button size="xs" variant="light" onClick={onOpenSettings}>
-                Open settings
-              </Button>
+              <Tip label="Enter your server's address and API key">
+                <Button size="xs" variant="light" onClick={onOpenSettings}>
+                  Open settings
+                </Button>
+              </Tip>
             </Group>
           </Alert>
         )}
@@ -176,15 +179,21 @@ export function HomeView({
         </Dropzone>
 
         <Group>
-          <Button leftSection={<IconFolderOpen size={16} />} variant="default" onClick={() => fileInput.current?.click()}>
-            Open file…
-          </Button>
-          <Button leftSection={<IconCamera size={16} />} variant="default" onClick={() => cameraInput.current?.click()}>
-            Take photos
-          </Button>
-          <Button leftSection={<IconFilePlus size={16} />} onClick={newScore.open}>
-            New score
-          </Button>
+          <Tip label="Open MusicXML or MXL (from MuseScore, Sibelius, Finale, Dorico…), a PDF or photos of sheet music, or a Musicraft project file">
+            <Button leftSection={<IconFolderOpen size={16} />} variant="default" onClick={() => fileInput.current?.click()}>
+              Open file…
+            </Button>
+          </Tip>
+          <Tip label="Photograph pages of sheet music with your camera; your server reads them into a score">
+            <Button leftSection={<IconCamera size={16} />} variant="default" onClick={() => cameraInput.current?.click()}>
+              Take photos
+            </Button>
+          </Tip>
+          <Tip label="Start an empty score for an instrument or an ensemble">
+            <Button leftSection={<IconFilePlus size={16} />} onClick={newScore.open}>
+              New score
+            </Button>
+          </Tip>
           <input
             ref={fileInput}
             type="file"
@@ -217,6 +226,7 @@ export function HomeView({
             {projects.map((p) => (
               <Card key={p.id} withBorder padding="md" radius="md" data-testid="project-card">
                 <Group justify="space-between" align="flex-start" wrap="nowrap">
+                  <Tip label="Open this project" position="top-start">
                   <Stack gap={4} style={{ minWidth: 0, cursor: "pointer" }} onClick={() => onOpenProject(p.id)}>
                     <Text fw={600} truncate>
                       {p.name}
@@ -238,11 +248,14 @@ export function HomeView({
                       </Text>
                     </Group>
                   </Stack>
+                  </Tip>
                   <Menu position="bottom-end" withinPortal>
                     <Menu.Target>
-                      <ActionIcon variant="subtle" aria-label="Project actions">
-                        <IconDots size={18} />
-                      </ActionIcon>
+                      <Tip label="Open, rename, duplicate, save as a file or delete this project">
+                        <ActionIcon variant="subtle" aria-label="Project actions">
+                          <IconDots size={18} />
+                        </ActionIcon>
+                      </Tip>
                     </Menu.Target>
                     <Menu.Dropdown>
                       <Menu.Item leftSection={<IconFolderOpen size={14} />} onClick={() => onOpenProject(p.id)}>

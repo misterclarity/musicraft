@@ -1,6 +1,7 @@
 import { Button, Group, NumberInput, Paper, Stack, Text, UnstyledButton } from "@mantine/core";
 import { restRuns, setRestLength, type Score } from "@musicraft/score-core";
 import { useEffect, useMemo, useState } from "react";
+import { Tip } from "./Tip";
 
 const MAX_ROWS = 60;
 
@@ -49,7 +50,7 @@ function RestRunRow({ score, from, to, onApply, onShow }: { score: Score; from: 
   const label = length === 1 ? `Bar ${first}` : `Bars ${first}–${score.measures[to]!.number}`;
   return (
     <Group gap={6} wrap="nowrap" data-testid="rest-run">
-      <UnstyledButton onClick={() => onShow(from)} style={{ flex: 1, minWidth: 0 }}>
+      <UnstyledButton onClick={() => onShow(from)} style={{ flex: 1, minWidth: 0 }} title="Select this rest and show it on the original page">
         <Text size="sm" truncate>
           {label}
         </Text>
@@ -58,9 +59,16 @@ function RestRunRow({ score, from, to, onApply, onShow }: { score: Score; from: 
       <Text size="xs" c="dimmed">
         bars
       </Text>
-      <Button size="compact-xs" variant="light" disabled={bars === length} onClick={() => onApply(setRestLength(score, from, bars), `Rest from bar ${first}: ${bars} bars`)}>
-        Set
-      </Button>
+      <Tip label={bars === length ? "Type how many bars this rest lasts on the original, then Set" : `Make this rest ${bars} bar${bars > 1 ? "s" : ""} long (adds or removes empty bars)`}>
+        <Button
+          size="compact-xs"
+          variant="light"
+          data-disabled={bars === length || undefined}
+          onClick={() => bars !== length && onApply(setRestLength(score, from, bars), `Rest from bar ${first}: ${bars} bars`)}
+        >
+          Set
+        </Button>
+      </Tip>
     </Group>
   );
 }

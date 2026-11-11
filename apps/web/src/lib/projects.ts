@@ -7,7 +7,7 @@ import {
   type Score,
 } from "@musicraft/score-core";
 import { gunzipSync, gzipSync, strFromU8, strToU8, unzipSync, zipSync } from "fflate";
-import { db, type PageRecord, type ProjectRecord, type ProjectSource, type VersionAuthor } from "./db";
+import { db, type PageRecord, type ProjectRecord, type ProjectSource, type StageSettings, type VersionAuthor } from "./db";
 
 const MAX_VERSIONS = 80;
 
@@ -67,6 +67,10 @@ export async function createProject(
 
 export async function saveScore(id: string, score: Score): Promise<void> {
   await db.projects.update(id, { score, updatedAt: Date.now() });
+}
+
+export async function saveStageSettings(id: string, stage: StageSettings): Promise<void> {
+  await db.projects.update(id, { stage });
 }
 
 export async function renameProject(id: string, name: string): Promise<void> {

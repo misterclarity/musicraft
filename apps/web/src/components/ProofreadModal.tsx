@@ -7,6 +7,7 @@ import { applyFinding, findingBar, proofreadSystem, proofreadSystems, type Findi
 import type { PageRecord } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { useProject } from "../state/project";
+import { Tip } from "./Tip";
 
 type Status = "open" | "applied" | "ignored" | "failed";
 
@@ -103,9 +104,19 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
         {!pages.length && <Alert color="gray">This score has no scanned pages to compare with.</Alert>}
         {!running && !finished && (
           <Group>
-            <Button onClick={start} disabled={!pages.length || !vision} loading={llm.status === "detecting"}>
-              Start proofreading
-            </Button>
+            <Tip
+              label={
+                !pages.length
+                  ? "This score has no scanned pages to compare with"
+                  : !vision
+                    ? "Needs a language model that can see images (a vision model)"
+                    : "Send each line of the original pages, with the notes recognised there, to the vision model and list what differs"
+              }
+            >
+              <Button onClick={() => pages.length && vision && void start()} data-disabled={!pages.length || !vision || undefined} loading={llm.status === "detecting"}>
+                Start proofreading
+              </Button>
+            </Tip>
             {vision === null && llm.status === "ready" && (
               <Text size="xs" c="dimmed">
                 The server didn&apos;t say whether the model accepts images; it will be tried anyway if you enable images in Settings.
@@ -120,9 +131,11 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
                 {running ? `Checking line ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…` : `Checked ${progress.done} of ${progress.total} lines.`}
               </Text>
               {running && (
-                <Button size="xs" variant="subtle" color="red" onClick={() => controller.current?.abort()}>
-                  Stop
-                </Button>
+                <Tip label="Stop after the current line; the differences found so far stay">
+                  <Button size="xs" variant="subtle" color="red" onClick={() => controller.current?.abort()}>
+                    Stop
+                  </Button>
+                </Tip>
               )}
             </Group>
             <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} animated={running} />
@@ -177,23 +190,29 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
                         </Text>
                       )}
                       <Group gap={4} justify="flex-end">
-                        <Button size="compact-xs" variant="subtle" leftSection={<IconEye size={12} />} disabled={bar < 0} onClick={() => onShow(bar, partId)}>
-                          Show
-                        </Button>
-                        {state === "open" && (
-                          <Button
-                            size="compact-xs"
-                            variant="default"
-                            leftSection={<IconX size={12} />}
-                            onClick={() => setStatus((s) => ({ ...s, [f.id]: { status: "ignored" } }))}
-                          >
-                            Ignore
+                        <Tip label={bar < 0 ? "This bar was deleted" : "Close this list and select the bar in the score, next to the original"}>
+                          <Button size="compact-xs" variant="subtle" leftSection={<IconEye size={12} />} data-disabled={bar < 0 || undefined} onClick={() => bar >= 0 && onShow(bar, partId)}>
+                            Show
                           </Button>
+                        </Tip>
+                        {state === "open" && (
+                          <Tip label="Leave the score as it is (the model may be wrong)">
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              leftSection={<IconX size={12} />}
+                              onClick={() => setStatus((s) => ({ ...s, [f.id]: { status: "ignored" } }))}
+                            >
+                              Ignore
+                            </Button>
+                          </Tip>
                         )}
                         {state === "open" && (f.kind !== "notes" || f.fix) && (
-                          <Button size="compact-xs" onClick={() => apply(f)}>
-                            Apply
-                          </Button>
+                          <Tip label="Make this change in the score (Undo takes it back)">
+                            <Button size="compact-xs" onClick={() => apply(f)}>
+                              Apply
+                            </Button>
+                          </Tip>
                         )}
                       </Group>
                     </Stack>
@@ -205,14 +224,16 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
         )}
         {finished && open.length > 1 && (
           <Group justify="flex-end">
-            <Button
-              variant="light"
-              onClick={() => {
-                for (const f of open) apply(f);
-              }}
-            >
-              Apply all {open.length} fixes
-            </Button>
+            <Tip label="Apply every open fix at once (key and time signatures first); each one can be undone">
+              <Button
+                variant="light"
+                onClick={() => {
+                  for (const f of open) apply(f);
+                }}
+              >
+                Apply all {open.length} fixes
+              </Button>
+            </Tip>
           </Group>
         )}
       </Stack>

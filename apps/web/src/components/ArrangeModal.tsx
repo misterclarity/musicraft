@@ -4,6 +4,7 @@ import { IconWand } from "@tabler/icons-react";
 import { useState } from "react";
 import { createProject } from "../lib/projects";
 import { instrumentOptions } from "./NewScoreModal";
+import { Tip } from "./Tip";
 
 interface Props {
   opened: boolean;
@@ -74,18 +75,22 @@ export function ArrangeModal({ opened, onClose, score, projectName, onApply }: P
             the horn&rdquo; or &ldquo;make the trumpet 2 part easier&rdquo;.
           </Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={close}>
-              Close
-            </Button>
-            {done.projectId && (
-              <Button
-                onClick={() => {
-                  close();
-                  window.location.hash = `#/project/${done.projectId}`;
-                }}
-              >
-                Open the arrangement
+            <Tip label="Stay with this score; the arrangement is saved in your scores">
+              <Button variant="default" onClick={close}>
+                Close
               </Button>
+            </Tip>
+            {done.projectId && (
+              <Tip label="Open the new score with the arrangement">
+                <Button
+                  onClick={() => {
+                    close();
+                    window.location.hash = `#/project/${done.projectId}`;
+                  }}
+                >
+                  Open the arrangement
+                </Button>
+              </Tip>
             )}
           </Group>
         </Stack>
@@ -129,12 +134,29 @@ export function ArrangeModal({ opened, onClose, score, projectName, onApply }: P
           </Radio.Group>
           {error && <Alert color="red">{error}</Alert>}
           <Group justify="flex-end">
-            <Button variant="default" onClick={close}>
-              Cancel
-            </Button>
-            <Button leftSection={<IconWand size={14} />} onClick={run} loading={busy} disabled={!sources.length || (ensemble === "custom" && custom.length < 2)}>
-              Arrange
-            </Button>
+            <Tip label="Close without arranging">
+              <Button variant="default" onClick={close}>
+                Cancel
+              </Button>
+            </Tip>
+            <Tip
+              label={
+                !sources.length
+                  ? "Choose at least one part to arrange from"
+                  : ensemble === "custom" && custom.length < 2
+                    ? "Choose at least two instruments"
+                    : "Make the arrangement as a new score (this score stays as it is)"
+              }
+            >
+              <Button
+                leftSection={<IconWand size={14} />}
+                onClick={() => sources.length && !(ensemble === "custom" && custom.length < 2) && void run()}
+                loading={busy}
+                data-disabled={!sources.length || (ensemble === "custom" && custom.length < 2) || undefined}
+              >
+                Arrange
+              </Button>
+            </Tip>
           </Group>
         </Stack>
       )}

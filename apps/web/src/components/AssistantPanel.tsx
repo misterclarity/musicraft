@@ -12,7 +12,6 @@ import {
   Stack,
   Text,
   Textarea,
-  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { getInstrument, isUnison, type Score } from "@musicraft/score-core";
@@ -37,6 +36,7 @@ import { TOOL_LABELS } from "../ai/labels";
 import type { PageRecord } from "../lib/db";
 import { useSettings } from "../lib/settings";
 import type { Selection } from "../state/project";
+import { Tip } from "./Tip";
 
 function barsOf(args: string): string {
   try {
@@ -57,7 +57,7 @@ function ToolRow({ entry }: { entry: Extract<ChatEntry, { kind: "tool" }> }) {
     entry.status === "running" ? <Loader size={12} /> : entry.status === "error" ? <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" /> : <IconCheck size={14} color="var(--mantine-color-teal-6)" />;
   return (
     <div className="chat-tool" data-testid="chat-tool">
-      <UnstyledButton onClick={() => setOpen((o) => !o)} style={{ width: "100%" }}>
+      <UnstyledButton onClick={() => setOpen((o) => !o)} style={{ width: "100%" }} title={open ? "Hide the details" : "Show what the assistant asked the music tools and what they answered"}>
         <Group gap={6} wrap="nowrap" align="flex-start">
           <div style={{ paddingTop: 2 }}>{icon}</div>
           <Text size="xs" c="dimmed" style={{ flex: 1 }}>
@@ -82,7 +82,7 @@ function AssistantText({ entry }: { entry: Extract<ChatEntry, { kind: "assistant
   return (
     <div data-testid="chat-assistant">
       {entry.reasoning && (
-        <UnstyledButton onClick={() => setShowThinking((v) => !v)}>
+        <UnstyledButton onClick={() => setShowThinking((v) => !v)} title={showThinking ? "Hide the model's reasoning" : "Show how the model reasoned"}>
           <Group gap={4}>
             {showThinking ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
             <Text size="xs" c="dimmed">
@@ -159,16 +159,14 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
         Connecting
       </Badge>
     ) : llm.status === "ready" && llm.caps ? (
-      <Tooltip
-        multiline
-        w={260}
+      <Tip
         label={`Model: ${llm.caps.model}\nContext: ${llm.caps.contextSize ? `${llm.caps.contextSize} tokens` : `unknown (${DEFAULT_CONTEXT} assumed)`}\nImages: ${llm.caps.vision === null ? "unknown" : llm.caps.vision ? "yes" : "no"}`}
         style={{ whiteSpace: "pre-line" }}
       >
         <Badge variant="light" color="teal" maw={170} style={{ textTransform: "none" }}>
           {llm.caps.model?.replace(/\.gguf$/i, "")}
         </Badge>
-      </Tooltip>
+      </Tip>
     ) : llm.status === "error" ? (
       <Badge variant="light" color="red">
         Not connected
@@ -185,9 +183,11 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
         </Group>
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>
-            <ActionIcon variant="subtle" aria-label="Assistant menu">
-              <IconDots size={16} />
-            </ActionIcon>
+            <Tip label="Start a new chat, reconnect to the model, or open the server settings">
+              <ActionIcon variant="subtle" aria-label="Assistant menu">
+                <IconDots size={16} />
+              </ActionIcon>
+            </Tip>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Item leftSection={<IconTrash size={14} />} disabled={assistant.running} onClick={() => assistant.reset(assistant.projectId)}>
@@ -212,21 +212,27 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
                 {DEFAULT_CONTEXT.toLocaleString("en")} tokens. Set the real size in Settings (llama-server&apos;s <code>-c</code>), or let
                 gateway.py forward <code>/props</code> so it is detected.
               </Text>
-              <Button size="xs" variant="light" mt="xs" onClick={onOpenSettings}>
-                Settings
-              </Button>
+              <Tip label="Set the model's context size by hand">
+                <Button size="xs" variant="light" mt="xs" onClick={onOpenSettings}>
+                  Settings
+                </Button>
+              </Tip>
             </Alert>
           )}
           {llm.status === "error" && (
             <Alert color="red" variant="light" title="The language model isn't reachable">
               <Text size="sm">{llm.error}</Text>
               <Group gap="xs" mt="xs">
-                <Button size="xs" variant="light" onClick={onOpenSettings}>
-                  Settings
-                </Button>
-                <Button size="xs" variant="subtle" onClick={() => void llm.detect(true)}>
-                  Try again
-                </Button>
+                <Tip label="Check the server address and API key">
+                  <Button size="xs" variant="light" onClick={onOpenSettings}>
+                    Settings
+                  </Button>
+                </Tip>
+                <Tip label="Ask the server for the model again">
+                  <Button size="xs" variant="subtle" onClick={() => void llm.detect(true)}>
+                    Try again
+                  </Button>
+                </Tip>
               </Group>
             </Alert>
           )}
@@ -237,7 +243,7 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
                 anything is kept. Select bars or notes first to talk about &ldquo;this&rdquo;.
               </Text>
               {tips.map((tip) => (
-                <UnstyledButton key={tip} className="chat-suggestion" onClick={() => send(tip)} disabled={assistant.running}>
+                <UnstyledButton key={tip} className="chat-suggestion" onClick={() => send(tip)} disabled={assistant.running} title="Send this request to the assistant">
                   <Text size="sm">{tip}</Text>
                 </UnstyledButton>
               ))}
@@ -295,12 +301,16 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
             )}
           </Stack>
           <Group gap="xs">
-            <Button size="xs" color="teal" leftSection={<IconCheck size={14} />} onClick={assistant.accept}>
-              Keep changes
-            </Button>
-            <Button size="xs" variant="default" leftSection={<IconX size={14} />} onClick={assistant.discard}>
-              Discard
-            </Button>
+            <Tip label="Keep the assistant's changes in the score (Undo can still take them back)">
+              <Button size="xs" color="teal" leftSection={<IconCheck size={14} />} onClick={assistant.accept}>
+                Keep changes
+              </Button>
+            </Tip>
+            <Tip label="Throw the changes away and go back to the score as it was (Ctrl+Z does the same)">
+              <Button size="xs" variant="default" leftSection={<IconX size={14} />} onClick={assistant.discard}>
+                Discard
+              </Button>
+            </Tip>
           </Group>
         </Paper>
       )}
@@ -325,17 +335,17 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
             data-testid="assistant-input"
           />
           {assistant.running ? (
-            <Tooltip label="Stop">
+            <Tip label="Stop the assistant; changes made so far stay in the preview">
               <ActionIcon size="lg" color="red" variant="light" onClick={assistant.stop} aria-label="Stop">
                 <IconPlayerStopFilled size={16} />
               </ActionIcon>
-            </Tooltip>
+            </Tip>
           ) : (
-            <Tooltip label="Send (Enter)">
-              <ActionIcon size="lg" onClick={() => send()} disabled={!text.trim()} aria-label="Send">
+            <Tip label={text.trim() ? "Send (Enter); Shift+Enter starts a new line" : "Type a request first"}>
+              <ActionIcon size="lg" onClick={() => text.trim() && send()} data-disabled={!text.trim() || undefined} aria-label="Send">
                 <IconSend2 size={16} />
               </ActionIcon>
-            </Tooltip>
+            </Tip>
           )}
         </Group>
       </div>

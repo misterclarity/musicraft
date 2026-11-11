@@ -12,6 +12,14 @@ export interface ProjectRecord {
   source: ProjectSource;
   /** The current score. */
   score: Score;
+  /** The 3D stage: venue and the places players were moved to. */
+  stage?: StageSettings;
+}
+
+export interface StageSettings {
+  venue: "hall" | "bandstand";
+  /** Where the user moved players, by part id (metres; see stage/layout.ts). */
+  seats: Record<string, { x: number; z: number }>;
 }
 
 export interface VersionRecord {

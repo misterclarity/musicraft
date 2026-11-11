@@ -8,6 +8,7 @@ import {
   type Mode,
 } from "@musicraft/score-core";
 import { useState } from "react";
+import { Tip } from "./Tip";
 
 const TIME_SIGNATURES = ["4/4", "3/4", "2/4", "2/2", "6/8", "9/8", "12/8", "5/4", "3/8"];
 
@@ -119,10 +120,14 @@ export function NewScoreModal({
         </SimpleGrid>
         <NumberInput label="Tempo (beats per minute)" value={tempo} min={20} max={300} onChange={(v) => setTempo(Number(v) || 100)} w={220} />
         <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={create}>Create</Button>
+          <Tip label="Close without making a score">
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+          </Tip>
+          <Tip label="Make the empty score with these parts and open it">
+            <Button onClick={create}>Create</Button>
+          </Tip>
         </Group>
       </Stack>
     </Modal>

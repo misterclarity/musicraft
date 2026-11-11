@@ -17,7 +17,6 @@ import {
   Stepper,
   Text,
   TextInput,
-  Tooltip,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import {
@@ -52,6 +51,7 @@ import { detectOmr, type OmrEngineInfo } from "../lib/server";
 import { getSettings, isServerConfigured } from "../lib/settings";
 import { CornerEditor } from "./CornerEditor";
 import { instrumentOptions } from "./NewScoreModal";
+import { Tip } from "./Tip";
 
 interface PageItem {
   key: string;
@@ -343,17 +343,21 @@ export function ScanImport({
             Reading PDFs and photos runs on your server. Enter its address and your API key in Settings.
           </Alert>
           <Group justify="flex-end">
-            <Button variant="default" onClick={onClose}>
-              Close
-            </Button>
-            <Button
-              onClick={() => {
-                onClose();
-                onOpenSettings();
-              }}
-            >
-              Open settings
-            </Button>
+            <Tip label="Close this window">
+              <Button variant="default" onClick={onClose}>
+                Close
+              </Button>
+            </Tip>
+            <Tip label="Enter your server's address and API key, then try again">
+              <Button
+                onClick={() => {
+                  onClose();
+                  onOpenSettings();
+                }}
+              >
+                Open settings
+              </Button>
+            </Tip>
           </Group>
         </Stack>
       ) : (
@@ -393,31 +397,41 @@ export function ScanImport({
                       <Checkbox size="xs" label={<Text size="xs" lineClamp={1}>{item.label}</Text>} checked={item.include} onChange={(e) => update(item.key, { include: e.currentTarget.checked })} />
                       <Group gap={2} justify="space-between">
                         <Group gap={2}>
-                          <Tooltip label="Rotate left">
+                          <Tip label="Turn the page a quarter turn to the left">
                             <ActionIcon size="sm" variant="subtle" onClick={() => update(item.key, { rotation: (item.rotation + 270) % 360 })} aria-label="Rotate left">
                               <IconRotate size={14} />
                             </ActionIcon>
-                          </Tooltip>
-                          <Tooltip label="Rotate right">
+                          </Tip>
+                          <Tip label="Turn the page a quarter turn to the right">
                             <ActionIcon size="sm" variant="subtle" onClick={() => update(item.key, { rotation: (item.rotation + 90) % 360 })} aria-label="Rotate right">
                               <IconRotateClockwise size={14} />
                             </ActionIcon>
-                          </Tooltip>
+                          </Tip>
                           {item.photo && (
-                            <Tooltip label="Page corners">
+                            <Tip label="Mark the corners of the sheet in the photo, so the page is straightened before it is read">
                               <ActionIcon size="sm" variant="subtle" onClick={() => setEditing(item)} aria-label="Page corners">
                                 <IconCrop size={14} />
                               </ActionIcon>
-                            </Tooltip>
+                            </Tip>
                           )}
                         </Group>
                         <Group gap={2}>
-                          <ActionIcon size="sm" variant="subtle" disabled={i === 0} onClick={() => moveItem(item.key, -1)} aria-label="Move earlier">
-                            <IconArrowUp size={14} />
-                          </ActionIcon>
-                          <ActionIcon size="sm" variant="subtle" disabled={i === items.length - 1} onClick={() => moveItem(item.key, 1)} aria-label="Move later">
-                            <IconArrowDown size={14} />
-                          </ActionIcon>
+                          <Tip label={i === 0 ? "This is the first page" : "Move this page earlier"}>
+                            <ActionIcon size="sm" variant="subtle" data-disabled={i === 0 || undefined} onClick={() => i > 0 && moveItem(item.key, -1)} aria-label="Move earlier">
+                              <IconArrowUp size={14} />
+                            </ActionIcon>
+                          </Tip>
+                          <Tip label={i === items.length - 1 ? "This is the last page" : "Move this page later"}>
+                            <ActionIcon
+                              size="sm"
+                              variant="subtle"
+                              data-disabled={i === items.length - 1 || undefined}
+                              onClick={() => i < items.length - 1 && moveItem(item.key, 1)}
+                              aria-label="Move later"
+                            >
+                              <IconArrowDown size={14} />
+                            </ActionIcon>
+                          </Tip>
                         </Group>
                       </Group>
                     </Stack>
@@ -425,9 +439,11 @@ export function ScanImport({
                 ))}
               </SimpleGrid>
               <Group justify="space-between">
-                <Button variant="default" leftSection={<IconPhotoPlus size={16} />} onClick={() => addInput.current?.click()}>
-                  Add pages
-                </Button>
+                <Tip label="Add more photos or PDF pages to read together">
+                  <Button variant="default" leftSection={<IconPhotoPlus size={16} />} onClick={() => addInput.current?.click()}>
+                    Add pages
+                  </Button>
+                </Tip>
                 <input
                   ref={addInput}
                   type="file"
@@ -444,12 +460,16 @@ export function ScanImport({
                   }}
                 />
                 <Group>
-                  <Button variant="default" onClick={onClose}>
-                    Cancel
-                  </Button>
-                  <Button disabled={selected.length === 0} onClick={() => setStep(1)}>
-                    Next
-                  </Button>
+                  <Tip label="Close without reading anything">
+                    <Button variant="default" onClick={onClose}>
+                      Cancel
+                    </Button>
+                  </Tip>
+                  <Tip label={selected.length === 0 ? "Tick at least one page" : "Next: say which instrument the music is written for"}>
+                    <Button data-disabled={selected.length === 0 || undefined} onClick={() => selected.length > 0 && setStep(1)}>
+                      Next
+                    </Button>
+                  </Tip>
                 </Group>
               </Group>
             </Stack>
@@ -490,12 +510,16 @@ export function ScanImport({
                 />
               )}
               <Group justify="flex-end">
-                <Button variant="default" onClick={() => setStep(0)}>
-                  Back
-                </Button>
-                <Button onClick={() => void recognise()}>
-                  Read {selected.length} page{selected.length > 1 ? "s" : ""}
-                </Button>
+                <Tip label="Back to the pages">
+                  <Button variant="default" onClick={() => setStep(0)}>
+                    Back
+                  </Button>
+                </Tip>
+                <Tip label="Send the pages to the recognition service on your server and read the music">
+                  <Button onClick={() => void recognise()}>
+                    Read {selected.length} page{selected.length > 1 ? "s" : ""}
+                  </Button>
+                </Tip>
               </Group>
             </Stack>
           </Stepper.Step>
@@ -519,21 +543,27 @@ export function ScanImport({
               <Group justify="flex-end">
                 {error ? (
                   <>
-                    <Button variant="default" onClick={() => setStep(1)}>
-                      Back
-                    </Button>
-                    <Button onClick={() => void recognise()}>Try again</Button>
+                    <Tip label="Back to the instrument and title">
+                      <Button variant="default" onClick={() => setStep(1)}>
+                        Back
+                      </Button>
+                    </Tip>
+                    <Tip label="Send the pages to the recognition service again">
+                      <Button onClick={() => void recognise()}>Try again</Button>
+                    </Tip>
                   </>
                 ) : (
-                  <Button
-                    variant="default"
-                    onClick={() => {
-                      cancelled.current = true;
-                      setStep(1);
-                    }}
-                  >
-                    Cancel
-                  </Button>
+                  <Tip label="Stop reading the pages">
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        cancelled.current = true;
+                        setStep(1);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </Tip>
                 )}
               </Group>
             </Stack>
@@ -589,7 +619,7 @@ export function ScanImport({
                     : "No obvious problems found. Still compare the score with the original page."}
                 </Alert>
                 <Group justify="space-between">
-                  <Tooltip label="What the recognition service read, before any corrections: useful when reporting a recognition problem">
+                  <Tip label="Save what the recognition service read, before any corrections: useful when reporting a recognition problem">
                     <Button
                       variant="subtle"
                       size="xs"
@@ -602,14 +632,18 @@ export function ScanImport({
                     >
                       Recognition output
                     </Button>
-                  </Tooltip>
+                  </Tip>
                   <Group>
-                    <Button variant="default" onClick={() => setStep(1)}>
-                      Back
-                    </Button>
-                    <Button onClick={() => void open()} loading={saving}>
-                      Open score
-                    </Button>
+                    <Tip label="Back to the instrument and title (to read the pages again)">
+                      <Button variant="default" onClick={() => setStep(1)}>
+                        Back
+                      </Button>
+                    </Tip>
+                    <Tip label="Save the score as a new project and open it, with the original pages beside it">
+                      <Button onClick={() => void open()} loading={saving}>
+                        Open score
+                      </Button>
+                    </Tip>
                   </Group>
                 </Group>
               </Stack>

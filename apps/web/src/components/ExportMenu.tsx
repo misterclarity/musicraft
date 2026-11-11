@@ -17,6 +17,7 @@ import {
 import { downloadBlob, safeFileName } from "../lib/files";
 import { exportProjectFile } from "../lib/projects";
 import type { PageSize } from "../render/renderer";
+import { Tip } from "./Tip";
 
 type PdfMode = "score" | "parts" | "print";
 
@@ -33,9 +34,11 @@ export function ExportMenu({ score, name, projectId }: { score: Score; name: str
     <>
       <Menu position="bottom-end" withinPortal>
         <Menu.Target>
-          <Button size="xs" variant="default" leftSection={<IconDownload size={14} />} rightSection={<IconChevronDown size={12} />}>
-            Export
-          </Button>
+          <Tip label="Save or print the music: PDF of the score or parts, MusicXML for other notation programs, MIDI, MEI, or a project file with everything">
+            <Button size="xs" variant="default" leftSection={<IconDownload size={14} />} rightSection={<IconChevronDown size={12} />}>
+              Export
+            </Button>
+          </Tip>
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Label>Print</Menu.Label>
@@ -108,12 +111,15 @@ function PdfModal({ mode, onClose, score, name }: { mode: PdfMode; onClose: () =
           <Text size="sm" fw={500}>
             Paper
           </Text>
-          <SegmentedControl value={pageSize} onChange={(v) => setPageSize(v as PageSize)} data={[{ value: "a4", label: "A4" }, { value: "letter", label: "Letter" }]} />
+          <Tip label="The paper size of the PDF">
+            <SegmentedControl value={pageSize} onChange={(v) => setPageSize(v as PageSize)} data={[{ value: "a4", label: "A4" }, { value: "letter", label: "Letter" }]} />
+          </Tip>
         </Stack>
         <Stack gap={4}>
           <Text size="sm" fw={500}>
             Staff size
           </Text>
+          <Tip label="How big the notes are printed: smaller fits more on a page, larger is easier to read on a stand">
           <SegmentedControl
             value={staff}
             onChange={setStaff}
@@ -124,12 +130,14 @@ function PdfModal({ mode, onClose, score, name }: { mode: PdfMode; onClose: () =
               { value: "100", label: "Large" },
             ]}
           />
+          </Tip>
         </Stack>
         {mode !== "parts" && (
           <Stack gap={4}>
             <Text size="sm" fw={500}>
               Pitch
             </Text>
+            <Tip label="Transposed: each part as its player reads it (a B♭ trumpet part a tone higher). Concert pitch: every part at the pitch it sounds, as a conductor might prefer">
             <SegmentedControl
               value={pitch}
               onChange={(v) => setPitch(v as PitchMode)}
@@ -138,6 +146,7 @@ function PdfModal({ mode, onClose, score, name }: { mode: PdfMode; onClose: () =
                 { value: "concert", label: "Concert pitch" },
               ]}
             />
+            </Tip>
           </Stack>
         )}
         {mode === "parts" && (
@@ -162,12 +171,16 @@ function PdfModal({ mode, onClose, score, name }: { mode: PdfMode; onClose: () =
         )}
         {progress !== null && <Progress value={progress} animated />}
         <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={run} loading={progress !== null} disabled={mode === "parts" && partIds.length === 0}>
-            {mode === "print" ? "Print" : "Download PDF"}
-          </Button>
+          <Tip label="Close without exporting">
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+          </Tip>
+          <Tip label={mode === "parts" && partIds.length === 0 ? "Choose at least one part first" : mode === "print" ? "Open your browser's print dialog with these pages" : "Make the PDF and save it"}>
+            <Button onClick={() => !(mode === "parts" && partIds.length === 0) && void run()} loading={progress !== null} data-disabled={(mode === "parts" && partIds.length === 0) || undefined}>
+              {mode === "print" ? "Print" : "Download PDF"}
+            </Button>
+          </Tip>
         </Group>
       </Stack>
     </Modal>

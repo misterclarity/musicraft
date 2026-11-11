@@ -1,10 +1,11 @@
-import { ActionIcon, Checkbox, Group, Menu, Select, Text, Tooltip } from "@mantine/core";
-import { buildPerformance, prettyName, type Score } from "@musicraft/score-core";
-import { IconPlayerPause, IconPlayerPlay, IconPlayerStop, IconVolume } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Player } from "../audio/player";
+import { ActionIcon, Button, Checkbox, Group, Menu, Select, Text } from "@mantine/core";
+import { prettyName, type Score } from "@musicraft/score-core";
+import { IconHeadphones, IconPlayerPause, IconPlayerPlay, IconPlayerStop, IconVolume } from "@tabler/icons-react";
+import { useEffect } from "react";
 import type { Selection } from "../state/project";
+import { onPlaybackFrame, usePlayback } from "../state/playback";
 import { setPlayingNotes } from "./ScoreView";
+import { Tip } from "./Tip";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -13,42 +14,18 @@ function formatTime(seconds: number) {
 }
 
 export function PlaybackBar({ score, selection }: { score: Score; selection: Selection }) {
-  const [tempo, setTempo] = useState("1");
-  const [playing, setPlaying] = useState(false);
-  const [position, setPosition] = useState(0);
-  const [muted, setMuted] = useState<string[]>([]);
-  const lastUpdate = useRef(0);
-  const performance = useMemo(() => buildPerformance(score, { tempoScale: Number(tempo) }), [score, tempo]);
-
-  const playerRef = useRef<Player | null>(null);
-  if (!playerRef.current) {
-    playerRef.current = new Player({
-      onTick: (time, ids) => {
-        setPlayingNotes(ids);
-        const now = Date.now();
-        if (now - lastUpdate.current > 200) {
-          lastUpdate.current = now;
-          setPosition(time);
-        }
-      },
-      onEnd: () => {
-        setPlaying(false);
-        setPosition(0);
-        setPlayingNotes([]);
-      },
-    });
-  }
-  const player = playerRef.current;
+  const playback = usePlayback();
+  const duration = playback.performance?.duration ?? 0;
 
   useEffect(() => {
-    player.load(score, performance);
-  }, [player, score, performance]);
+    usePlayback.getState().load(score);
+  }, [score]);
 
-  useEffect(() => {
-    player.setMuted(muted);
-  }, [player, muted]);
+  // The score view highlights the notes that are sounding.
+  useEffect(() => onPlaybackFrame(({ notes }) => setPlayingNotes(notes.flatMap((n) => n.noteIds))), []);
 
-  useEffect(() => () => player.dispose(), [player]);
+  // Leaving the project stops playback.
+  useEffect(() => () => usePlayback.getState().stop(), []);
 
   // Space toggles playback (unless typing in a field).
   useEffect(() => {
@@ -63,76 +40,89 @@ export function PlaybackBar({ score, selection }: { score: Score; selection: Sel
   });
 
   async function toggle() {
-    if (player.isPlaying) {
-      player.pause();
-      setPlaying(false);
-      setPlayingNotes([]);
+    const state = usePlayback.getState();
+    if (state.playing) {
+      state.pause();
       return;
     }
-    let from = player.position;
-    if (selection.measures) {
-      const bar = performance.measures.find((m) => m.measureIndex === selection.measures!.from);
+    let from: number | undefined;
+    if (selection.measures && state.performance) {
+      const bar = state.performance.measures.find((m) => m.measureIndex === selection.measures!.from);
       if (bar) from = bar.start;
     }
-    await player.play(from);
-    setPlaying(true);
+    await state.play(from);
   }
 
-  function stop() {
-    player.stop(false);
-    player.reset();
-    setPlaying(false);
-    setPosition(0);
-    setPlayingNotes([]);
-  }
+  const soloCount = playback.solo.length;
+  const mixChanged = playback.muted.length > 0 || soloCount > 0 || Object.values(playback.volumes).some((v) => v !== 1);
 
   return (
     <Group gap={4} wrap="nowrap">
-      <Tooltip label={playing ? "Pause (space)" : "Play (space) — from the selected bar if any"}>
-        <ActionIcon variant="filled" size="lg" onClick={() => void toggle()} aria-label={playing ? "Pause" : "Play"} data-testid="play">
-          {playing ? <IconPlayerPause size={18} /> : <IconPlayerPlay size={18} />}
+      <Tip label={playback.playing ? "Pause (space)" : "Play (space): from the selected bar, if any, or from where it stopped"}>
+        <ActionIcon variant="filled" size="lg" onClick={() => void toggle()} aria-label={playback.playing ? "Pause" : "Play"} data-testid="play">
+          {playback.playing ? <IconPlayerPause size={18} /> : <IconPlayerPlay size={18} />}
         </ActionIcon>
-      </Tooltip>
-      <Tooltip label="Stop">
-        <ActionIcon variant="default" size="lg" onClick={stop} aria-label="Stop">
+      </Tip>
+      <Tip label="Stop and go back to the start">
+        <ActionIcon variant="default" size="lg" onClick={() => playback.stop()} aria-label="Stop">
           <IconPlayerStop size={18} />
         </ActionIcon>
-      </Tooltip>
+      </Tip>
       <Text size="xs" c="dimmed" w={70} ta="center" visibleFrom="sm">
-        {formatTime(position)} / {formatTime(performance.duration)}
+        {formatTime(playback.position)} / {formatTime(duration)}
       </Text>
-      <Select
-        size="xs"
-        w={84}
-        value={tempo}
-        onChange={(v) => setTempo(v ?? "1")}
-        allowDeselect={false}
-        aria-label="Tempo"
-        data={[
-          { value: "0.5", label: "50%" },
-          { value: "0.75", label: "75%" },
-          { value: "1", label: "100%" },
-          { value: "1.25", label: "125%" },
-        ]}
-      />
+      <Tip label="Playback speed: slower helps to follow fast passages">
+        <Select
+          size="xs"
+          w={84}
+          value={String(playback.tempo)}
+          onChange={(v) => playback.setTempo(Number(v ?? "1"))}
+          allowDeselect={false}
+          aria-label="Tempo"
+          data={[
+            { value: "0.5", label: "50%" },
+            { value: "0.75", label: "75%" },
+            { value: "1", label: "100%" },
+            { value: "1.25", label: "125%" },
+          ]}
+        />
+      </Tip>
       <Menu closeOnItemClick={false} position="bottom-end" withinPortal>
         <Menu.Target>
-          <ActionIcon variant="subtle" size="lg" aria-label="Mute parts">
-            <IconVolume size={18} />
-          </ActionIcon>
+          <Tip label="Choose which parts you hear: mute parts, or play only the solo ones">
+            <ActionIcon variant={mixChanged ? "light" : "subtle"} size="lg" aria-label="Mute parts">
+              {soloCount ? <IconHeadphones size={18} /> : <IconVolume size={18} />}
+            </ActionIcon>
+          </Tip>
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Label>Play these parts</Menu.Label>
           {score.parts.map((p) => (
-            <Menu.Item key={p.id}>
+            <Group key={p.id} gap={6} px="sm" py={4} wrap="nowrap" justify="space-between">
               <Checkbox
                 size="xs"
                 label={prettyName(p.name)}
-                checked={!muted.includes(p.id)}
-                onChange={(e) => setMuted((m) => (e.currentTarget.checked ? m.filter((id) => id !== p.id) : [...m, p.id]))}
+                checked={!playback.muted.includes(p.id)}
+                onChange={() => playback.toggleMute(p.id)}
               />
-            </Menu.Item>
+              <Tip label={`Solo: hear only the solo parts${soloCount ? "" : ` (${prettyName(p.name)} alone)`}`}>
+                <Button
+                  size="compact-xs"
+                  variant={playback.solo.includes(p.id) ? "filled" : "default"}
+                  onClick={() => playback.toggleSolo(p.id)}
+                  aria-label={`Solo ${prettyName(p.name)}`}
+                >
+                  S
+                </Button>
+              </Tip>
+            </Group>
           ))}
+          {mixChanged && (
+            <>
+              <Menu.Divider />
+              <Menu.Item onClick={() => playback.resetMix()}>Hear every part again</Menu.Item>
+            </>
+          )}
         </Menu.Dropdown>
       </Menu>
     </Group>

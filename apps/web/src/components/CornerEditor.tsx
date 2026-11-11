@@ -2,6 +2,7 @@ import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { IconFocusCentered, IconMaximize, IconWand } from "@tabler/icons-react";
 import { useRef, useState, type PointerEvent } from "react";
 import type { Corners } from "../lib/omr";
+import { Tip } from "./Tip";
 
 const FULL: Corners = [
   [0, 0],
@@ -113,21 +114,29 @@ export function CornerEditor({
         <Group justify="space-between">
           <Group gap="xs">
             {onDetect && (
-              <Button variant="light" leftSection={<IconWand size={16} />} loading={detecting} onClick={detect}>
-                Detect automatically
-              </Button>
+              <Tip label="Find the edges of the sheet in the photo again">
+                <Button variant="light" leftSection={<IconWand size={16} />} loading={detecting} onClick={detect}>
+                  Detect automatically
+                </Button>
+              </Tip>
             )}
-            <Button variant="default" leftSection={<IconMaximize size={16} />} onClick={() => setCorners(FULL)}>
-              Use whole image
-            </Button>
+            <Tip label="Don't crop: use the photo as it is">
+              <Button variant="default" leftSection={<IconMaximize size={16} />} onClick={() => setCorners(FULL)}>
+                Use whole image
+              </Button>
+            </Tip>
           </Group>
           <Group gap="xs">
-            <Button variant="default" onClick={() => onClose(null)}>
-              Cancel
-            </Button>
-            <Button leftSection={<IconFocusCentered size={16} />} onClick={() => onClose(isFull ? undefined : corners)}>
-              Done
-            </Button>
+            <Tip label="Keep the corners as they were">
+              <Button variant="default" onClick={() => onClose(null)}>
+                Cancel
+              </Button>
+            </Tip>
+            <Tip label="Straighten the page to these corners before it is read">
+              <Button leftSection={<IconFocusCentered size={16} />} onClick={() => onClose(isFull ? undefined : corners)}>
+                Done
+              </Button>
+            </Tip>
           </Group>
         </Group>
       </Stack>

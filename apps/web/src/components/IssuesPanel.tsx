@@ -2,6 +2,7 @@ import { Badge, Group, Stack, Switch, Text, ThemeIcon, UnstyledButton } from "@m
 import type { Issue } from "@musicraft/score-core";
 import { IconAlertTriangle, IconCircleCheck, IconInfoCircle, IconX } from "@tabler/icons-react";
 import { useState } from "react";
+import { Tip } from "./Tip";
 
 const ICONS = {
   error: { icon: IconX, color: "red" },
@@ -24,7 +25,9 @@ export function IssuesPanel({ issues, onJump }: { issues: Issue[]; onJump: (issu
         <Badge color="orange" variant="light">
           {counts.warning} warnings
         </Badge>
-        <Switch size="xs" label={`Range hints (${counts.info})`} checked={showHints} onChange={(e) => setShowHints(e.currentTarget.checked)} />
+        <Tip label="Also list notes that are playable but outside the range an average player manages comfortably">
+          <Switch size="xs" label={`Range hints (${counts.info})`} checked={showHints} onChange={(e) => setShowHints(e.currentTarget.checked)} />
+        </Tip>
       </Group>
       {visible.length === 0 && (
         <Group gap="xs">
@@ -39,7 +42,7 @@ export function IssuesPanel({ issues, onJump }: { issues: Issue[]; onJump: (issu
       {visible.slice(0, 300).map((issue) => {
         const { icon: Icon, color } = ICONS[issue.severity];
         return (
-          <UnstyledButton key={issue.id} onClick={() => onJump(issue)} data-testid="issue">
+          <UnstyledButton key={issue.id} onClick={() => onJump(issue)} data-testid="issue" title="Show this bar in the score">
             <Group gap="xs" wrap="nowrap" align="flex-start">
               <ThemeIcon color={color} variant="light" size="sm" radius="xl" mt={2}>
                 <Icon size={12} />

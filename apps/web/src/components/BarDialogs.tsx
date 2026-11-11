@@ -24,6 +24,7 @@ import {
 } from "@musicraft/score-core";
 import { useState, type ReactNode } from "react";
 import type { Selection } from "../state/project";
+import { Tip } from "./Tip";
 
 export type BarDialog = "key" | "time" | "clef" | "tempo" | "rehearsal" | "barline" | "text" | "multirest";
 
@@ -104,14 +105,18 @@ function Actions({ onSave, onRemove, removeLabel, saveDisabled }: { onSave: () =
     <Group justify="space-between" mt="sm">
       <div>
         {onRemove && (
-          <Button variant="subtle" color="red" onClick={onRemove}>
-            {removeLabel ?? "Remove"}
-          </Button>
+          <Tip label="Take this change away again from the bar">
+            <Button variant="subtle" color="red" onClick={onRemove}>
+              {removeLabel ?? "Remove"}
+            </Button>
+          </Tip>
         )}
       </div>
-      <Button onClick={onSave} disabled={saveDisabled}>
-        Apply
-      </Button>
+      <Tip label={saveDisabled ? "Nothing to change yet" : "Apply to the selected bar (Undo takes it back)"}>
+        <Button onClick={() => !saveDisabled && onSave()} data-disabled={saveDisabled || undefined}>
+          Apply
+        </Button>
+      </Tip>
     </Group>
   );
 }

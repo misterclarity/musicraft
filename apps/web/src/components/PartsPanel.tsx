@@ -28,6 +28,7 @@ import { ArrangeModal } from "./ArrangeModal";
 import { ChangeInstrumentModal } from "./ChangeInstrumentModal";
 import { instrumentOptions } from "./NewScoreModal";
 import { TransposeModal } from "./TransposeModal";
+import { Tip } from "./Tip";
 
 type Dialog =
   | { kind: "instrument"; partId: string }
@@ -55,15 +56,21 @@ export function PartsPanel({
   return (
     <Stack gap="sm">
       <Group gap="xs">
-        <Button size="xs" leftSection={<IconTransfer size={14} />} onClick={() => setDialog({ kind: "transpose" })}>
-          Transpose score
-        </Button>
-        <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => setDialog({ kind: "add" })}>
-          Add part
-        </Button>
-        <Button size="xs" variant="default" leftSection={<IconWand size={14} />} onClick={() => setDialog({ kind: "arrange" })}>
-          Arrange for…
-        </Button>
+        <Tip label="Move every part to another key, or up or down by an interval or octaves">
+          <Button size="xs" leftSection={<IconTransfer size={14} />} onClick={() => setDialog({ kind: "transpose" })}>
+            Transpose score
+          </Button>
+        </Tip>
+        <Tip label="Add an empty part for another instrument">
+          <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => setDialog({ kind: "add" })}>
+            Add part
+          </Button>
+        </Tip>
+        <Tip label="Arrange this music for an ensemble (e.g. piano → brass quintet) as a new score: melody, bass and harmony shared out between the instruments">
+          <Button size="xs" variant="default" leftSection={<IconWand size={14} />} onClick={() => setDialog({ kind: "arrange" })}>
+            Arrange for…
+          </Button>
+        </Tip>
       </Group>
       {score.parts.map((part, index) => {
         const instrument = getInstrument(part.instrument);
@@ -77,6 +84,8 @@ export function PartsPanel({
             style={{ borderColor: selected ? "var(--mantine-color-blue-5)" : undefined, cursor: "pointer" }}
             onClick={() => onSelectPart?.(part.id)}
             data-testid="part-card"
+            data-selected={selected || undefined}
+            aria-selected={selected}
           >
             <Group justify="space-between" wrap="nowrap" align="flex-start">
               <Stack gap={2} style={{ minWidth: 0 }}>
@@ -87,11 +96,15 @@ export function PartsPanel({
                   {prettyName(instrument.name)} · {describeTransposition(instrument)}
                 </Text>
               </Stack>
+              {/* Clicks on the menu shouldn't also select the part (the menu's own toggle must stay on the button). */}
+              <div onClick={(e) => e.stopPropagation()}>
               <Menu position="bottom-end" withinPortal>
                 <Menu.Target>
-                  <ActionIcon variant="subtle" aria-label={`Actions for ${part.name}`} onClick={(e) => e.stopPropagation()}>
-                    <IconDots size={16} />
-                  </ActionIcon>
+                  <Tip label="This part: change its instrument, transpose it, move it, or delete it">
+                    <ActionIcon variant="subtle" aria-label={`Actions for ${part.name}`}>
+                      <IconDots size={16} />
+                    </ActionIcon>
+                  </Tip>
                 </Menu.Target>
                 <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
                   <Menu.Item leftSection={<IconArrowsExchange size={14} />} onClick={() => setDialog({ kind: "instrument", partId: part.id })}>
@@ -147,6 +160,7 @@ export function PartsPanel({
                   </Menu.Item>
                 </Menu.Dropdown>
               </Menu>
+              </div>
             </Group>
           </Paper>
         );
@@ -166,18 +180,22 @@ export function PartsPanel({
           <Stack>
             <Select label="Instrument" searchable value={newInstrument} onChange={(v) => setNewInstrument(v ?? "trumpet-bb")} data={instrumentOptions()} allowDeselect={false} />
             <Group justify="flex-end">
-              <Button variant="default" onClick={() => setDialog(null)}>
-                Cancel
-              </Button>
-              <Button
-                leftSection={<IconMusic size={14} />}
-                onClick={() => {
-                  onApply(addPart(score, newInstrument), `Add ${prettyName(getInstrument(newInstrument).name)}`, true);
-                  setDialog(null);
-                }}
-              >
-                Add
-              </Button>
+              <Tip label="Close without adding a part">
+                <Button variant="default" onClick={() => setDialog(null)}>
+                  Cancel
+                </Button>
+              </Tip>
+              <Tip label="Add an empty part for this instrument at the end of the score">
+                <Button
+                  leftSection={<IconMusic size={14} />}
+                  onClick={() => {
+                    onApply(addPart(score, newInstrument), `Add ${prettyName(getInstrument(newInstrument).name)}`, true);
+                    setDialog(null);
+                  }}
+                >
+                  Add
+                </Button>
+              </Tip>
             </Group>
           </Stack>
         </Modal>

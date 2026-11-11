@@ -1,4 +1,4 @@
-import { ActionIcon, AppShell, Group, Title, Tooltip } from "@mantine/core";
+import { ActionIcon, AppShell, Group, Title } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconSettings } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
@@ -7,6 +7,7 @@ import { ProjectView } from "./components/ProjectView";
 import { ScanImport } from "./components/ScanImport";
 import { SettingsModal } from "./components/SettingsModal";
 import { DialogHost } from "./lib/modals";
+import { Tip } from "./components/Tip";
 
 type Route = { view: "home" } | { view: "project"; id: string };
 
@@ -45,11 +46,11 @@ export function App() {
                 <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={28} height={28} />
                 <Title order={4}>Musicraft</Title>
               </Group>
-              <Tooltip label="Settings">
+              <Tip label="Settings: your server, API key, language model and recognition service">
                 <ActionIcon variant="subtle" size="lg" onClick={settings.open} aria-label="Settings">
                   <IconSettings size={20} />
                 </ActionIcon>
-              </Tooltip>
+              </Tip>
             </Group>
           </AppShell.Header>
           <AppShell.Main>

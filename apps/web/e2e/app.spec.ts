@@ -222,3 +222,78 @@ test("explains when the server doesn't report the model's context size", async (
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("assistant-preview")).toBeVisible();
 });
+
+/** The middle of a player on screen, from the 3D scene. */
+async function playerOnScreen(page: Page, partIndex: number) {
+  return page.evaluate((index) => {
+    type Object3D = { matrixWorld: unknown };
+    const scene = document.querySelector("a-scene") as unknown as { camera: unknown; canvas: HTMLCanvasElement };
+    const player = document.querySelectorAll("[data-player]")[index] as unknown as { object3D: Object3D; dataset: DOMStringMap };
+    const THREE = (window as unknown as { AFRAME: { THREE: { Vector3: new (x: number, y: number, z: number) => { applyMatrix4(m: unknown): { project(c: unknown): { x: number; y: number } } } } } }).AFRAME.THREE;
+    const p = new THREE.Vector3(0, 0.9, 0).applyMatrix4(player.object3D.matrixWorld).project(scene.camera);
+    const rect = scene.canvas.getBoundingClientRect();
+    return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height, id: player.dataset.player! };
+  }, partIndex);
+}
+
+test("shows the parts as players on a 3D stage, to select, solo and move", async ({ page }) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: "New score" }).click();
+  await page.getByRole("combobox", { name: "Ensemble" }).click();
+  await page.getByRole("option", { name: /Brass quintet \(Bb/ }).click();
+  await page.getByRole("textbox", { name: "Bars" }).fill("4");
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page.locator(".score-page svg").first()).toBeVisible();
+
+  await page.getByText("Stage", { exact: true }).click();
+  await expect(page.locator("a-scene canvas")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-player]")).toHaveCount(5);
+
+  // Selecting a part in the Parts panel selects the player, and the card offers solo, mute and volume.
+  await page.getByTestId("part-card").filter({ hasText: "Tuba" }).click();
+  const card = page.getByTestId("player-card");
+  await expect(card).toContainText("Tuba");
+  await card.getByRole("button", { name: "Solo" }).click();
+  await expect(page.getByRole("button", { name: "Mute parts" })).toHaveAttribute("data-variant", "light");
+
+  // Pointing at a player in 3D selects it.
+  await page.waitForTimeout(1500); // the camera settles
+  const trumpet = await playerOnScreen(page, 0);
+  await page.mouse.move(trumpet.x, trumpet.y);
+  await page.waitForTimeout(300);
+  await page.mouse.click(trumpet.x, trumpet.y);
+  await expect(card).toContainText("Trumpet 1");
+
+  // In move mode a player can be dragged somewhere else; the place is kept.
+  await page.getByTestId("move-players").click();
+  const tuba = await playerOnScreen(page, 4);
+  const place = (id: string) =>
+    page.evaluate((partId) => {
+      const player = document.querySelector(`[data-player="${partId}"]`) as unknown as { object3D: { position: { x: number; z: number } } };
+      return `${player.object3D.position.x.toFixed(2)} ${player.object3D.position.z.toFixed(2)}`;
+    }, id);
+  const before = await place(tuba.id);
+  await page.mouse.move(tuba.x, tuba.y);
+  await page.waitForTimeout(300);
+  await page.mouse.down();
+  await page.mouse.move(tuba.x - 150, tuba.y - 40, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => place(tuba.id)).not.toEqual(before);
+
+  // The bandstand, and back to the score with the part still selected.
+  await page.getByText("Bandstand", { exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => (document.querySelector("[mc-venue]") as unknown as { components: Record<string, { data: { type: string } }> }).components["mc-venue"]!.data.type))
+    .toBe("bandstand");
+  await card.getByRole("button", { name: "Show in score" }).click();
+  await expect(page.locator(".score-page svg").first()).toBeVisible();
+  await expect(page.getByTestId("part-card").filter({ hasText: "Trumpet 1" })).toHaveAttribute("data-selected", "true");
+});
+
+test("explains every control in a tooltip, also when it can't be used yet", async ({ page }) => {
+  await importFile(page, "trumpet-part.musicxml");
+  await page.getByRole("button", { name: "Zoom in" }).hover();
+  await expect(page.getByRole("tooltip")).toContainText("Zoom in: larger notation");
+  await page.getByRole("button", { name: "Dot (.)" }).hover();
+  await expect(page.getByRole("tooltip")).toContainText("Select a note or rest first.");
+});

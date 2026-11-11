@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { VersionAuthor } from "../lib/db";
 import { modals } from "../lib/modals";
 import { listVersions, loadVersion, type VersionSummary } from "../lib/projects";
+import { Tip } from "./Tip";
 
 const AUTHOR_COLORS: Record<VersionAuthor, string> = { you: "blue", ai: "grape", import: "gray", recognition: "teal" };
 const AUTHOR_LABELS: Record<VersionAuthor, string> = { you: "you", ai: "AI", import: "import", recognition: "scan" };
@@ -39,17 +40,19 @@ export function HistoryPanel({
           Saved versions of this score. Every change can also be undone with Ctrl+Z.
         </Text>
       </Group>
-      <Button
-        size="xs"
-        variant="default"
-        leftSection={<IconDeviceFloppy size={14} />}
-        onClick={async () => {
-          const label = await modals.prompt("Save a version", "", "Name");
-          if (label) await onSave(label);
-        }}
-      >
-        Save version…
-      </Button>
+      <Tip label="Keep a named copy of the score as it is now, to go back to later">
+        <Button
+          size="xs"
+          variant="default"
+          leftSection={<IconDeviceFloppy size={14} />}
+          onClick={async () => {
+            const label = await modals.prompt("Save a version", "", "Name");
+            if (label) await onSave(label);
+          }}
+        >
+          Save version…
+        </Button>
+      </Tip>
       {versions.map((v) => (
         <Group key={v.id} justify="space-between" wrap="nowrap" align="flex-start">
           <Stack gap={0} style={{ minWidth: 0 }}>
@@ -65,17 +68,19 @@ export function HistoryPanel({
               </Text>
             </Group>
           </Stack>
-          <Button
-            size="compact-xs"
-            variant="subtle"
-            leftSection={<IconRestore size={12} />}
-            onClick={async () => {
-              const score = await loadVersion(v.id);
-              if (score) onRestore(score, `Restore "${v.label}"`);
-            }}
-          >
-            Restore
-          </Button>
+          <Tip label="Go back to this version (the current score stays in the history, and Undo brings it back)">
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              leftSection={<IconRestore size={12} />}
+              onClick={async () => {
+                const score = await loadVersion(v.id);
+                if (score) onRestore(score, `Restore "${v.label}"`);
+              }}
+            >
+              Restore
+            </Button>
+          </Tip>
         </Group>
       ))}
     </Stack>

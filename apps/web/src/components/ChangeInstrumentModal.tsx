@@ -15,6 +15,7 @@ import {
 } from "@musicraft/score-core";
 import { useMemo, useState } from "react";
 import { instrumentOptions } from "./NewScoreModal";
+import { Tip } from "./Tip";
 
 export function ChangeInstrumentModal({
   opened,
@@ -119,19 +120,24 @@ export function ChangeInstrumentModal({
           </Alert>
         )}
         <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!preview?.next && name === part.name}
-            onClick={() => {
-              const next = preview?.next ?? changeInstrument(score, partId, instrumentId, { mode, name: name.trim() || undefined });
-              onApply(next, `${prettyName(part.name)}: ${prettyName(current.name)} → ${prettyName(target.name)}`);
-              onClose();
-            }}
-          >
-            Change
-          </Button>
+          <Tip label="Close without changing the instrument">
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+          </Tip>
+          <Tip label={!preview?.next && name === part.name ? "Choose another instrument or name first" : "Rewrite the part for the new instrument (Undo takes it back)"}>
+            <Button
+              data-disabled={(!preview?.next && name === part.name) || undefined}
+              onClick={() => {
+                if (!preview?.next && name === part.name) return;
+                const next = preview?.next ?? changeInstrument(score, partId, instrumentId, { mode, name: name.trim() || undefined });
+                onApply(next, `${prettyName(part.name)}: ${prettyName(current.name)} → ${prettyName(target.name)}`);
+                onClose();
+              }}
+            >
+              Change
+            </Button>
+          </Tip>
         </Group>
       </Stack>
     </Modal>

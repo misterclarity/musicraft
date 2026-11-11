@@ -21,7 +21,17 @@ export default defineConfig({
     baseURL: `http://localhost:4173${BASE}`,
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } }],
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
+        // WebGL for the 3D stage, in software where there is no GPU (CI).
+        launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] },
+      },
+    },
+  ],
   webServer: [
     {
       command: `node e2e/static-server.mjs --port 4173 --base ${BASE}${pages ? " --no-headers" : ""}`,

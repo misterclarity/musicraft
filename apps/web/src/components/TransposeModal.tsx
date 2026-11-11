@@ -15,6 +15,7 @@ import {
 } from "@musicraft/score-core";
 import { useMemo, useState } from "react";
 import { keyOptions } from "./NewScoreModal";
+import { Tip } from "./Tip";
 
 const INTERVALS = [
   { value: "m2", label: "minor 2nd (1 semitone)" },
@@ -112,6 +113,7 @@ export function TransposeModal({
   return (
     <Modal opened={opened} onClose={onClose} title={`Transpose ${scopeLabel}`} size="md">
       <Stack>
+        <Tip label="To a key: move the music into another key. By interval: by any interval. Octaves: one or two octaves up or down. Within key: by steps of the current scale">
         <SegmentedControl
           value={mode}
           onChange={(v) => {
@@ -126,6 +128,7 @@ export function TransposeModal({
             { value: "diatonic", label: "Within key" },
           ]}
         />
+        </Tip>
         {mode === "key" && (
           <Select label="New key (concert pitch)" value={targetKey} onChange={(v) => setTargetKey(v ?? "0")} data={keyOptions(currentKey.mode)} allowDeselect={false} />
         )}
@@ -143,6 +146,7 @@ export function TransposeModal({
           />
         )}
         {mode === "diatonic" && <Select label="How far" value={steps} onChange={(v) => setSteps(v ?? "2")} data={STEPS} allowDeselect={false} />}
+        <Tip label="Which way to move the notes (nearest picks the smaller move)">
         <SegmentedControl
           value={direction}
           onChange={(v) => setDirection(v as "up" | "down" | "nearest")}
@@ -152,6 +156,7 @@ export function TransposeModal({
             { value: "down", label: "Down" },
           ]}
         />
+        </Tip>
         {plan && (
           <Text size="sm">
             <b>Result:</b> {plan.describe}
@@ -163,9 +168,12 @@ export function TransposeModal({
           </Alert>
         )}
         <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
+          <Tip label="Close without transposing">
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+          </Tip>
+          <Tip label="Transpose now (Undo takes it back)">
           <Button
             onClick={() => {
               if (!plan) return;
@@ -175,6 +183,7 @@ export function TransposeModal({
           >
             Transpose
           </Button>
+          </Tip>
         </Group>
       </Stack>
     </Modal>
