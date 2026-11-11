@@ -47,7 +47,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Chromium's system packages come from Ubuntu's mirrors, which the runners sometimes can't
+      # reach. The runner image already has what headless Chromium needs, so go on without them.
+      - name: Install Chromium's system packages
+        run: npx playwright install-deps chromium
+        working-directory: apps/web
+        timeout-minutes: 5
+        continue-on-error: true
+      - name: Install Chromium
+        run: npx playwright install chromium
         working-directory: apps/web
       - run: npm run build
         env:
