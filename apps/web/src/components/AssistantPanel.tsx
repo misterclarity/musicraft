@@ -37,6 +37,7 @@ import type { PageRecord } from "../lib/db";
 import { useSettings } from "../lib/settings";
 import type { Selection } from "../state/project";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 function barsOf(args: string): string {
   try {
@@ -342,7 +343,7 @@ export function AssistantPanel({ score, selection, pages, onOpenSettings }: Prop
             </Tip>
           ) : (
             <Tip label={text.trim() ? "Send (Enter); Shift+Enter starts a new line" : "Type a request first"}>
-              <ActionIcon size="lg" onClick={() => text.trim() && send()} data-disabled={!text.trim() || undefined} aria-label="Send">
+              <ActionIcon size="lg" onClick={() => text.trim() && send()} {...unavailable(!text.trim())} aria-label="Send">
                 <IconSend2 size={16} />
               </ActionIcon>
             </Tip>

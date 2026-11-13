@@ -18,6 +18,7 @@ import { downloadBlob, safeFileName } from "../lib/files";
 import { exportProjectFile } from "../lib/projects";
 import type { PageSize } from "../render/renderer";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 type PdfMode = "score" | "parts" | "print";
 
@@ -177,7 +178,7 @@ function PdfModal({ mode, onClose, score, name }: { mode: PdfMode; onClose: () =
             </Button>
           </Tip>
           <Tip label={mode === "parts" && partIds.length === 0 ? "Choose at least one part first" : mode === "print" ? "Open your browser's print dialog with these pages" : "Make the PDF and save it"}>
-            <Button onClick={() => !(mode === "parts" && partIds.length === 0) && void run()} loading={progress !== null} data-disabled={(mode === "parts" && partIds.length === 0) || undefined}>
+            <Button onClick={() => !(mode === "parts" && partIds.length === 0) && void run()} loading={progress !== null} {...unavailable((mode === "parts" && partIds.length === 0))}>
               {mode === "print" ? "Print" : "Download PDF"}
             </Button>
           </Tip>

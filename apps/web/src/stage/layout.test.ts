@@ -1,6 +1,6 @@
 import { newScore } from "@musicraft/score-core";
 import { describe, expect, it } from "vitest";
-import { arrangeSeats, clampToStage, facingConductor, FIRST_ROW, floorHeight, RISER_STEP, rowCount, soundPositions } from "./layout";
+import { arrangeSeats, clampToStage, facingConductor, FIRST_ROW, floorHeight, hasMovedPlayers, RISER_STEP, rowCount, soundPositions } from "./layout";
 
 const score = (instruments: string[]) => newScore({ title: "T", parts: instruments.map((instrument) => ({ instrument })), measures: 2 });
 
@@ -58,6 +58,13 @@ describe("seating", () => {
     // On the bandstand everyone is on the raised floor.
     expect(arrangeSeats(duo, "bandstand").every((s) => s.y === 0.9)).toBe(true);
     expect(floorHeight("hall", 0, 2, 3)).toBe(0);
+  });
+
+  it("counts only moved players whose parts are still in the score", () => {
+    const duo = score(["trumpet-bb", "piano"]);
+    expect(hasMovedPlayers(duo, {})).toBe(false);
+    expect(hasMovedPlayers(duo, { "deleted-part": { x: 1, z: -4 } })).toBe(false);
+    expect(hasMovedPlayers(duo, { [duo.parts[1]!.id]: { x: 1, z: -4 } })).toBe(true);
   });
 
   it("gives each part a place for its sound", () => {

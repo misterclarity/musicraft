@@ -8,6 +8,7 @@ import type { PageRecord } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { useProject } from "../state/project";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 type Status = "open" | "applied" | "ignored" | "failed";
 
@@ -113,7 +114,7 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
                     : "Send each line of the original pages, with the notes recognised there, to the vision model and list what differs"
               }
             >
-              <Button onClick={() => pages.length && vision && void start()} data-disabled={!pages.length || !vision || undefined} loading={llm.status === "detecting"}>
+              <Button onClick={() => pages.length && vision && void start()} {...unavailable(!pages.length || !vision)} loading={llm.status === "detecting"}>
                 Start proofreading
               </Button>
             </Tip>
@@ -191,7 +192,7 @@ export function ProofreadModal({ opened, onClose, pages, onShow }: Props) {
                       )}
                       <Group gap={4} justify="flex-end">
                         <Tip label={bar < 0 ? "This bar was deleted" : "Close this list and select the bar in the score, next to the original"}>
-                          <Button size="compact-xs" variant="subtle" leftSection={<IconEye size={12} />} data-disabled={bar < 0 || undefined} onClick={() => bar >= 0 && onShow(bar, partId)}>
+                          <Button size="compact-xs" variant="subtle" leftSection={<IconEye size={12} />} {...unavailable(bar < 0)} onClick={() => bar >= 0 && onShow(bar, partId)}>
                             Show
                           </Button>
                         </Tip>

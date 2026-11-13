@@ -16,6 +16,7 @@ import { DURATIONS, editor, useEditor } from "../lib/editor";
 import type { Selection } from "../state/project";
 import type { BarDialog } from "./BarDialogs";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 const ARTICULATIONS: { value: Articulation; label: string; name: string; tip: string }[] = [
   { value: "accent", label: ">", name: "Accent", tip: "Accent: start the note with emphasis" },
@@ -75,8 +76,7 @@ function Tool({
         variant={active ? "filled" : "default"}
         size="lg"
         onClick={disabled ? undefined : onClick}
-        data-disabled={disabled || undefined}
-        aria-disabled={disabled || undefined}
+        {...unavailable(disabled)}
         aria-label={name ?? tip}
         style={{ fontWeight: 700 }}
       >
@@ -114,7 +114,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
         <Menu withinPortal position="bottom" opened={notesOpen} onChange={(open) => setNotesOpen(open && hasNotes)}>
           <Menu.Target>
             <Tip label={hasNotes ? "Enter a note by its letter, in the nearest octave (or type A–G)" : `Enter a note by its letter. ${NEEDS_NOTE}`}>
-              <Button variant="default" size="compact-md" data-disabled={!hasNotes || undefined} aria-disabled={!hasNotes || undefined} aria-label="Enter a note">
+              <Button variant="default" size="compact-md" {...unavailable(!hasNotes)} aria-label="Enter a note">
                 A–G
               </Button>
             </Tip>
@@ -157,8 +157,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
               <Button
                 variant="default"
                 size="compact-md"
-                data-disabled={!hasNotes || undefined}
-                aria-disabled={!hasNotes || undefined}
+                {...unavailable(!hasNotes)}
                 style={{ fontStyle: "italic", fontWeight: 700, fontFamily: "Times, serif" }}
                 aria-label="Dynamics"
               >
@@ -190,7 +189,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
         <Menu withinPortal position="bottom" disabled={!hasNotes}>
           <Menu.Target>
             <Tip label={hasNotes ? "Add a note above the selected one to make a chord (Alt+3 adds a third)" : `Add a note to make a chord. ${NEEDS_NOTE}`}>
-              <ActionIcon variant="default" size="lg" data-disabled={!hasNotes || undefined} aria-disabled={!hasNotes || undefined} aria-label="Add a note above">
+              <ActionIcon variant="default" size="lg" {...unavailable(!hasNotes)} aria-label="Add a note above">
                 <IconMusicPlus size={16} />
               </ActionIcon>
             </Tip>
@@ -221,7 +220,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
                   : `Bar settings. ${NEEDS_BAR}`
               }
             >
-              <Button variant="default" size="compact-md" leftSection={<IconSettings2 size={14} />} data-disabled={!hasBars || undefined} aria-disabled={!hasBars || undefined}>
+              <Button variant="default" size="compact-md" leftSection={<IconSettings2 size={14} />} {...unavailable(!hasBars)}>
                 Bar
               </Button>
             </Tip>

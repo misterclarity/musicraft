@@ -16,9 +16,11 @@ import {
   pasteMeasures,
   respellNotes,
   restRuns,
+  setBarline,
   setDuration,
   setDurations,
   setDynamic,
+  setRehearsal,
   setRestLength,
   setTempo,
   shownPitch,
@@ -300,5 +302,66 @@ describe("multi-bar rests", () => {
     expect(restRuns(setRestLength(score, 1, 5))[0]).toEqual({ from: 1, to: 5 });
     expect(restRuns(setRestLength(score, 1, 1))[0]).toEqual({ from: 1, to: 1 });
     expect(setRestLength(score, 1, 1).measures).toHaveLength(4);
+  });
+
+  const whole = { inputDuration: { type: "whole", dots: 0 } } as const;
+
+  it("ends a run where a printed multi-bar rest would end", () => {
+    let score = newScore({ title: "T", parts: [{ instrument: "trumpet-bb" }], measures: 8 });
+    score = enterNote(score, events(score, 0)[0]!.id, "C", whole).score;
+    expect(restRuns(score)).toEqual([{ from: 1, to: 7 }]);
+    // Bar 4 starts with a rehearsal mark, bar 5 ends with a double barline, bar 7 has a dynamic.
+    score = setRehearsal(score, 3, "B");
+    score = setBarline(score, 4, { barline: "double" });
+    score = setDynamic(score, events(score, 6)[0]!.id, "p");
+    expect(restRuns(score)).toEqual([
+      { from: 1, to: 2 },
+      { from: 3, to: 4 },
+      { from: 5, to: 5 },
+      { from: 6, to: 6 },
+      { from: 7, to: 7 },
+    ]);
+  });
+
+  it("keeps what is printed at the start and end of a rest in place when it gets longer or shorter", () => {
+    // Bar 2 is a rest; bar 3 is a rest from rehearsal mark B to a double barline; bars 1 and 4 have notes.
+    let score = newScore({ title: "T", parts: [{ instrument: "trumpet-bb" }], measures: 4 });
+    score = enterNote(score, events(score, 0)[0]!.id, "C", whole).score;
+    score = enterNote(score, events(score, 3)[0]!.id, "D", whole).score;
+    score = setRehearsal(score, 2, "B");
+    score = setBarline(score, 2, { barline: "double" });
+    expect(restRuns(score)).toEqual([
+      { from: 1, to: 1 },
+      { from: 2, to: 2 },
+    ]);
+    // On the original the first rest lasts 4 bars and the second 3: B starts the second one, the double barline ends it.
+    const longer = setRestLength(setRestLength(score, 1, 4), 5, 3);
+    expect(longer.measures.map((m) => m.rehearsal ?? "")).toEqual(["", "", "", "", "", "B", "", "", ""]);
+    expect(longer.measures.map((m) => m.barline ?? "")).toEqual(["", "", "", "", "", "", "", "double", "final"]);
+    expect(restRuns(longer)).toEqual([
+      { from: 1, to: 4 },
+      { from: 5, to: 7 },
+    ]);
+    const shorter = setRestLength(longer, 6, 1);
+    expect(shorter.measures.map((m) => m.barline ?? "")).toEqual(["", "", "", "", "", "double", "final"]);
+    expect(shorter.measures[5]!.rehearsal).toBe("B");
+  });
+
+  it("keeps an end repeat and a volta at the end of an expanded rest", () => {
+    let score = part();
+    score = setBarline(score, 2, { repeatEnd: {} });
+    score = { ...score, measures: score.measures.map((m, i) => (i === 2 ? { ...m, ending: { number: "1", start: true, stop: true } } : m)) };
+    const expanded = expandMultiRest(score, 2, 3);
+    expect(expanded.measures.map((m) => !!m.repeatEnd)).toEqual([false, false, false, false, true, false, false]);
+    expect(expanded.measures.slice(2, 5).map((m) => m.ending)).toEqual([
+      { number: "1", start: true, stop: false },
+      { number: "1", start: false, stop: false },
+      { number: "1", start: false, stop: true },
+    ]);
+    expect(restRuns(expanded)).toEqual([
+      { from: 1, to: 1 },
+      { from: 2, to: 4 },
+      { from: 6, to: 6 },
+    ]);
   });
 });

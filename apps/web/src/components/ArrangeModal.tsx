@@ -5,6 +5,7 @@ import { useState } from "react";
 import { createProject } from "../lib/projects";
 import { instrumentOptions } from "./NewScoreModal";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 interface Props {
   opened: boolean;
@@ -152,7 +153,7 @@ export function ArrangeModal({ opened, onClose, score, projectName, onApply }: P
                 leftSection={<IconWand size={14} />}
                 onClick={() => sources.length && !(ensemble === "custom" && custom.length < 2) && void run()}
                 loading={busy}
-                data-disabled={!sources.length || (ensemble === "custom" && custom.length < 2) || undefined}
+                {...unavailable(!sources.length || (ensemble === "custom" && custom.length < 2))}
               >
                 Arrange
               </Button>

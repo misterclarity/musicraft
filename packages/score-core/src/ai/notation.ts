@@ -11,7 +11,7 @@
  */
 import { produce, type Draft } from "immer";
 import { describeBeats } from "../checks";
-import { durationValue, NOTE_TYPES, TYPE_DENOMINATOR, type Duration, type NoteType } from "../duration";
+import { NOTE_TYPES, TYPE_DENOMINATOR, type Duration, type NoteType } from "../duration";
 import { add, cmp, gt, lt, sub, ZERO, type Fraction } from "../fraction";
 import { newId } from "../ids";
 import {
@@ -708,9 +708,4 @@ export function barsText(score: Score, measures: number[]): string {
     start = prev = m;
   }
   return `${measures.length === 1 ? "bar" : "bars"} ${ranges.join(", ")}`;
-}
-
-/** Total value of one parsed line, for callers that validate before writing. */
-export function lineValue(line: McnLine, length: Fraction): Fraction {
-  return line.events.reduce((t, e) => (e.kind === "barRest" ? add(t, length) : e.grace ? t : add(t, durationValue(e.duration))), ZERO as Fraction);
 }

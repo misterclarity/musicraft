@@ -93,10 +93,3 @@ export function renamePart(score: Score, partId: Id, name: string, abbreviation?
     if (abbreviation !== undefined) part.abbreviation = abbreviation;
   });
 }
-
-/** Keep only some parts (e.g. to make a single-part score). */
-export function extractParts(score: Score, partIds: Id[]): Score {
-  return produce(score, (draft) => {
-    draft.parts = draft.parts.filter((p) => partIds.includes(p.id));
-  });
-}

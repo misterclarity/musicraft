@@ -16,6 +16,7 @@ import {
 import { useMemo, useState } from "react";
 import { instrumentOptions } from "./NewScoreModal";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 export function ChangeInstrumentModal({
   opened,
@@ -127,7 +128,7 @@ export function ChangeInstrumentModal({
           </Tip>
           <Tip label={!preview?.next && name === part.name ? "Choose another instrument or name first" : "Rewrite the part for the new instrument (Undo takes it back)"}>
             <Button
-              data-disabled={(!preview?.next && name === part.name) || undefined}
+              {...unavailable((!preview?.next && name === part.name))}
               onClick={() => {
                 if (!preview?.next && name === part.name) return;
                 const next = preview?.next ?? changeInstrument(score, partId, instrumentId, { mode, name: name.trim() || undefined });

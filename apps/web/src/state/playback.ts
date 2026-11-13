@@ -4,7 +4,7 @@
  */
 import { buildPerformance, type Performance, type PerformanceNote, type Score } from "@musicraft/score-core";
 import { create } from "zustand";
-import { Player, type Mix, type Room, type SpaceMode, type Vec3 } from "../audio/player";
+import { Player, samePlace, type Mix, type Room, type SpaceMode, type Vec3 } from "../audio/player";
 
 export interface PlaybackFrame {
   /** Seconds from the start of the performance. */
@@ -108,10 +108,12 @@ export const usePlayback = create<PlaybackState>()((set, get) => ({
 
   setTempo(tempo) {
     set({ tempo });
-    if (!loadedScore) return;
+    const previous = get().performance;
+    if (!loadedScore || !previous) return;
     const performance = perform(loadedScore, tempo);
-    player.load(loadedScore, performance);
-    set({ performance });
+    // Carry on from the same place in the music, which is at another time at another speed.
+    player.load(loadedScore, performance, samePlace(previous, performance, player.position));
+    set({ performance, position: player.position });
   },
 
   async play(from) {

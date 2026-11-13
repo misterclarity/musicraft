@@ -226,10 +226,6 @@ export type Direction =
 // Construction helpers
 // ---------------------------------------------------------------------------
 
-export function createScore(title = "Untitled"): Score {
-  return { id: newId("s"), schemaVersion: SCORE_SCHEMA_VERSION, meta: { title }, measures: [], parts: [] };
-}
-
 /** A whole-bar rest. It is drawn as a whole rest whatever the time signature and lasts the whole bar. */
 export function measureRest(id: Id = newId("e")): RestEvent {
   return { kind: "rest", id, duration: { type: "whole", dots: 0 }, measureRest: true };
@@ -341,6 +337,49 @@ export function* allEvents(
 export function measureIsEmpty(pm: PartMeasure | undefined): boolean {
   if (!pm) return true;
   return pm.voices.every((v) => v.events.every((e) => e.kind === "rest"));
+}
+
+/**
+ * Whether something printed at the start of a bar ends a multi-bar rest before it: a key or time
+ * signature, rehearsal mark, tempo, start repeat or the start of a volta.
+ */
+export function breaksRestBefore(info: MeasureInfo): boolean {
+  return !!(info.key || info.time || info.rehearsal || info.tempo || info.repeatStart || info.ending?.start);
+}
+
+/**
+ * Whether something printed at the end of a bar ends a multi-bar rest after it: an end repeat, a
+ * double, final or other special barline, or the end of a volta.
+ */
+export function breaksRestAfter(info: MeasureInfo): boolean {
+  return !!(info.repeatEnd || (info.barline && info.barline !== "regular") || info.ending?.stop);
+}
+
+/**
+ * A multi-bar rest that ended at bar `from` now ends at bar `to` (bars were added after it, or are
+ * about to be removed from its end): what is printed at its end moves along (the barline, an end
+ * repeat, the end of a volta), and a volta over it covers the bars in between.
+ */
+export function moveRestEnd(measures: MeasureInfo[], from: number, to: number): void {
+  const source = measures[from];
+  const target = measures[to];
+  if (!source || !target || from === to) return;
+  if (source.barline) {
+    target.barline = source.barline;
+    delete source.barline;
+  }
+  if (source.repeatEnd) {
+    target.repeatEnd = source.repeatEnd;
+    delete source.repeatEnd;
+  }
+  const ending = source.ending;
+  if (!ending) return;
+  for (let m = from + 1; m <= to; m++) measures[m]!.ending ??= { number: ending.number, start: false, stop: false };
+  if (!target.ending) return;
+  target.ending.stop = ending.stop;
+  if (ending.open) target.ending.open = true;
+  ending.stop = false;
+  delete ending.open;
 }
 
 /** Renumber bars 1, 2, 3 … skipping a pickup bar at the start (which becomes bar 0). */

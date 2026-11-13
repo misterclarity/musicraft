@@ -3,6 +3,8 @@ import { durationValue, TYPE_VALUE, type Duration, type NoteType } from "../dura
 import { add, cmp, div, eq, frac, gte, lcm, mul, sub, toNumber, ZERO, type Fraction } from "../fraction";
 import { getInstrument } from "../instruments";
 import {
+  breaksRestAfter,
+  breaksRestBefore,
   concertKeys,
   eventOnsets,
   eventValue,
@@ -414,12 +416,11 @@ class Exporter {
     this.score.measures.forEach((info, m) => {
       const pm = part.measures[m];
       const empty = measureIsEmpty(pm) && !pm?.clefChanges?.length && !pm?.directions?.length;
-      // Anything printed at the start of this bar ends the run before it.
-      const marked = !!info.key || !!info.time || !!info.rehearsal || !!info.tempo || !!info.repeatStart || !!info.ending;
-      if (marked || !empty) close(m);
+      // Anything printed at the start of this bar ends the run before it, and no run goes under a volta.
+      if (breaksRestBefore(info) || info.ending || !empty) close(m);
       if (empty && start < 0) start = m;
       // Anything printed at the end of this bar ends the run after it.
-      if (info.repeatEnd || (info.barline && info.barline !== "regular") || info.ending?.stop) close(m + 1);
+      if (breaksRestAfter(info)) close(m + 1);
     });
     close(this.score.measures.length);
     return runs;

@@ -189,6 +189,8 @@ export function plausibleTitle(title: string | undefined): boolean {
   const text = (title ?? "").trim();
   if (!text || text === "Untitled") return false;
   if (/=\s*\d/.test(text)) return false;
+  // One Chinese, Japanese or Korean character can be a word; one Latin letter is more likely a stray mark.
+  if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text)) return true;
   return text.replace(/[^\p{L}]/gu, "").length >= 2;
 }
 
@@ -326,8 +328,9 @@ function inferSectionTime(score: Score, section: { from: number; to: number }, s
   if (cmp(top.length, frac(1, 4)) < 0 || cmp(top.length, frac(2)) > 0) return undefined;
   const agreeing = top.bars.length;
   const fitting = byLength.get(fractionKey(nominal))?.bars.length ?? 0;
-  // Most bars must agree, and clearly more than fit the printed time signature.
-  if (agreeing < 2 || agreeing * 2 < evidence || agreeing < fitting * 2) return undefined;
+  // At least three bars and most of them must agree, clearly more than fit the printed time
+  // signature: two bars that miss the same beat are more likely misread than in another metre.
+  if (agreeing < 3 || agreeing * 2 < evidence || agreeing < fitting * 2) return undefined;
   const time = timeForLength(top.length, compoundVotes(score, top.bars, top.length), stated);
   return time && time.beats <= 16 ? time : undefined;
 }

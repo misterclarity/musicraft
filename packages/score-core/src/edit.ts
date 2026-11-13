@@ -9,6 +9,8 @@ import { durationValue, splitValue, type Duration } from "./duration";
 import { add, cmp, gt, lt, sub, ZERO, type Fraction } from "./fraction";
 import { newId } from "./ids";
 import {
+  breaksRestAfter,
+  breaksRestBefore,
   concertKeys,
   emptyPartMeasure,
   eventOnsets,
@@ -16,6 +18,7 @@ import {
   measureLengths,
   measureIsEmpty,
   measureRest,
+  moveRestEnd,
   renumberMeasures,
   type Articulation,
   type Clef,
@@ -725,14 +728,23 @@ export function isRestBar(score: Score, measureIndex: number): boolean {
   return score.parts.every((part) => measureIsEmpty(part.measures[measureIndex]));
 }
 
-/** Runs of consecutive whole-bar rests (in every part): where a multi-bar rest may have been read as one bar. */
+/**
+ * Runs of consecutive whole-bar rests (in every part): where a multi-bar rest may have been read as
+ * one bar. A run ends where a printed multi-bar rest would: at a signature, rehearsal mark, tempo,
+ * repeat, volta or special barline, and a bar with text, dynamics or a clef change is a run of its own.
+ */
 export function restRuns(score: Score): { from: number; to: number }[] {
   const runs: { from: number; to: number }[] = [];
-  score.measures.forEach((_, m) => {
-    if (!isRestBar(score, m)) return;
-    const last = runs[runs.length - 1];
-    if (last && last.to === m - 1) last.to = m;
+  let open = false;
+  score.measures.forEach((info, m) => {
+    if (!isRestBar(score, m)) {
+      open = false;
+      return;
+    }
+    const marked = score.parts.some((p) => p.measures[m]?.directions?.length || p.measures[m]?.clefChanges?.length);
+    if (open && !marked && !breaksRestBefore(info)) runs[runs.length - 1]!.to = m;
     else runs.push({ from: m, to: m });
+    open = !marked && !breaksRestAfter(info);
   });
   return runs;
 }
@@ -748,12 +760,17 @@ export function expandMultiRest(score: Score, measureIndex: number, bars: number
   if (!isRestBar(score, measureIndex)) throw new EditError(`Bar ${label} has notes, so it isn't a multi-bar rest.`);
   if (!Number.isInteger(bars) || bars < 1 || bars > MAX_REST_BARS) throw new EditError(`A multi-bar rest lasts 1 to ${MAX_REST_BARS} bars.`);
   if (bars === 1) return score;
-  return insertMeasures(score, measureIndex + 1, bars - 1);
+  return lengthenRest(score, measureIndex, bars - 1);
+}
+
+/** Add empty bars after bar `last`, which then ends the rest no more: its barline, repeat or volta end moves to the last new bar. */
+function lengthenRest(score: Score, last: number, count: number): Score {
+  return produce(insertMeasures(score, last + 1, count), (draft) => moveRestEnd(draft.measures, last, last + count));
 }
 
 /**
  * Make the run of whole-bar rests that contains a bar last `bars` bars in total, adding or removing
- * empty bars at its end.
+ * empty bars at its end (what is printed at its end stays at its end).
  */
 export function setRestLength(score: Score, measureIndex: number, bars: number): Score {
   if (!isRestBar(score, measureIndex)) {
@@ -762,8 +779,15 @@ export function setRestLength(score: Score, measureIndex: number, bars: number):
   if (!Number.isInteger(bars) || bars < 1 || bars > MAX_REST_BARS) throw new EditError(`A rest lasts 1 to ${MAX_REST_BARS} bars.`);
   const run = restRuns(score).find((r) => r.from <= measureIndex && measureIndex <= r.to)!;
   const length = run.to - run.from + 1;
-  if (bars > length) return insertMeasures(score, run.to + 1, bars - length);
-  if (bars < length) return deleteMeasures(score, run.from + bars, run.to);
+  if (bars > length) return lengthenRest(score, run.to, bars - length);
+  if (bars < length) {
+    const last = run.from + bars - 1;
+    return deleteMeasures(
+      produce(score, (draft) => moveRestEnd(draft.measures, run.to, last)),
+      last + 1,
+      run.to,
+    );
+  }
   return score;
 }
 

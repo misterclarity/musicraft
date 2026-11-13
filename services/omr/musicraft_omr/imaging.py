@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
-import pypdfium2 as pdfium
+import pypdfium2 as pdfium  # type: ignore[import-untyped]
 from PIL import Image, ImageOps
 
 try:  # iPhone photos
@@ -57,8 +57,8 @@ def render_pdf_page(data: bytes, index: int, dpi: int = PDF_DPI) -> Image.Image:
 
 def open_image(data: bytes) -> Image.Image:
     try:
-        image = Image.open(io.BytesIO(data))
-        image = ImageOps.exif_transpose(image)  # honour the camera's rotation
+        opened = Image.open(io.BytesIO(data))
+        image = ImageOps.exif_transpose(opened)  # honour the camera's rotation
         return image.convert("RGB")
     except Exception as error:  # noqa: BLE001
         raise UnsupportedFile(f"The image could not be read: {error}") from error

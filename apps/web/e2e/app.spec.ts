@@ -236,7 +236,16 @@ async function playerOnScreen(page: Page, partIndex: number) {
   }, partIndex);
 }
 
-test("shows the parts as players on a 3D stage, to select, solo and move", async ({ page }) => {
+/** Where a player stands on the stage (metres). */
+function placeOf(page: Page, partId: string) {
+  return page.evaluate((id) => {
+    const player = document.querySelector(`[data-player="${id}"]`) as unknown as { object3D: { position: { x: number; z: number } } };
+    return `${player.object3D.position.x.toFixed(2)} ${player.object3D.position.z.toFixed(2)}`;
+  }, partId);
+}
+
+/** A new brass quintet score, shown on the stage. */
+async function openQuintetStage(page: Page) {
   await page.goto("./");
   await page.getByRole("button", { name: "New score" }).click();
   await page.getByRole("combobox", { name: "Ensemble" }).click();
@@ -248,6 +257,10 @@ test("shows the parts as players on a 3D stage, to select, solo and move", async
   await page.getByText("Stage", { exact: true }).click();
   await expect(page.locator("a-scene canvas")).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("[data-player]")).toHaveCount(5);
+}
+
+test("shows the parts as players on a 3D stage, to select, solo and move", async ({ page }) => {
+  await openQuintetStage(page);
 
   // Selecting a part in the Parts panel selects the player, and the card offers solo, mute and volume.
   await page.getByTestId("part-card").filter({ hasText: "Tuba" }).click();
@@ -267,18 +280,13 @@ test("shows the parts as players on a 3D stage, to select, solo and move", async
   // In move mode a player can be dragged somewhere else; the place is kept.
   await page.getByTestId("move-players").click();
   const tuba = await playerOnScreen(page, 4);
-  const place = (id: string) =>
-    page.evaluate((partId) => {
-      const player = document.querySelector(`[data-player="${partId}"]`) as unknown as { object3D: { position: { x: number; z: number } } };
-      return `${player.object3D.position.x.toFixed(2)} ${player.object3D.position.z.toFixed(2)}`;
-    }, id);
-  const before = await place(tuba.id);
+  const before = await placeOf(page, tuba.id);
   await page.mouse.move(tuba.x, tuba.y);
   await page.waitForTimeout(300);
   await page.mouse.down();
   await page.mouse.move(tuba.x - 150, tuba.y - 40, { steps: 6 });
   await page.mouse.up();
-  await expect.poll(() => place(tuba.id)).not.toEqual(before);
+  await expect.poll(() => placeOf(page, tuba.id)).not.toEqual(before);
 
   // The bandstand, and back to the score with the part still selected.
   await page.getByText("Bandstand", { exact: true }).click();
@@ -290,10 +298,39 @@ test("shows the parts as players on a 3D stage, to select, solo and move", async
   await expect(page.getByTestId("part-card").filter({ hasText: "Trumpet 1" })).toHaveAttribute("data-selected", "true");
 });
 
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("moves a player on the stage with a finger, without turning the camera", async ({ page }) => {
+    await openQuintetStage(page);
+    await page.getByTestId("move-players").click();
+    await page.waitForTimeout(1500); // the camera settles
+    const yaw = () =>
+      page.evaluate(() => {
+        const camera = document.querySelector("[look-controls]") as unknown as { components: Record<string, { yawObject: { rotation: { y: number } } }> };
+        return camera.components["look-controls"]!.yawObject.rotation.y.toFixed(3);
+      });
+    const turned = await yaw();
+    const tuba = await playerOnScreen(page, 4);
+    const before = await placeOf(page, tuba.id);
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) =>
+      cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+    await touch("touchStart", tuba.x, tuba.y);
+    for (let step = 1; step <= 6; step++) await touch("touchMove", tuba.x - 25 * step, tuba.y - 7 * step);
+    await touch("touchEnd");
+    await expect.poll(() => placeOf(page, tuba.id)).not.toEqual(before);
+    expect(await yaw()).toBe(turned);
+  });
+});
+
 test("explains every control in a tooltip, also when it can't be used yet", async ({ page }) => {
   await importFile(page, "trumpet-part.musicxml");
   await page.getByRole("button", { name: "Zoom in" }).hover();
   await expect(page.getByRole("tooltip")).toContainText("Zoom in: larger notation");
   await page.getByRole("button", { name: "Dot (.)" }).hover();
   await expect(page.getByRole("tooltip")).toContainText("Select a note or rest first.");
+  // Screen readers hear that it can't be used yet.
+  await expect(page.getByRole("button", { name: "Dot (.)" })).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("button", { name: "Zoom in" })).not.toHaveAttribute("aria-disabled");
 });

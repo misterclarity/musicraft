@@ -79,10 +79,6 @@ export function formatPitch(p: Pitch): string {
   return `${p.step}${accidentalText(p.alter)}${p.octave}`;
 }
 
-export function pitchClassName(p: Pick<Pitch, "step" | "alter">): string {
-  return `${p.step}${accidentalText(p.alter)}`;
-}
-
 // ---------------------------------------------------------------------------
 // Intervals
 // ---------------------------------------------------------------------------

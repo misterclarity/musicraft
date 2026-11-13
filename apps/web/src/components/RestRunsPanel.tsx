@@ -2,6 +2,7 @@ import { Button, Group, NumberInput, Paper, Stack, Text, UnstyledButton } from "
 import { restRuns, setRestLength, type Score } from "@musicraft/score-core";
 import { useEffect, useMemo, useState } from "react";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 const MAX_ROWS = 60;
 
@@ -63,7 +64,7 @@ function RestRunRow({ score, from, to, onApply, onShow }: { score: Score; from: 
         <Button
           size="compact-xs"
           variant="light"
-          data-disabled={bars === length || undefined}
+          {...unavailable(bars === length)}
           onClick={() => bars !== length && onApply(setRestLength(score, from, bars), `Rest from bar ${first}: ${bars} bars`)}
         >
           Set

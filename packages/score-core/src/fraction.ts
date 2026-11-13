@@ -27,7 +27,6 @@ export function frac(n: number, d = 1): Fraction {
 }
 
 export const ZERO: Fraction = { n: 0, d: 1 };
-export const ONE: Fraction = { n: 1, d: 1 };
 
 export const add = (a: Fraction, b: Fraction): Fraction => frac(a.n * b.d + b.n * a.d, a.d * b.d);
 export const sub = (a: Fraction, b: Fraction): Fraction => frac(a.n * b.d - b.n * a.d, a.d * b.d);
@@ -36,7 +35,6 @@ export const div = (a: Fraction, b: Fraction): Fraction => {
   if (b.n === 0) throw new Error("Division by zero fraction");
   return frac(a.n * b.d, a.d * b.n);
 };
-export const neg = (a: Fraction): Fraction => ({ n: -a.n, d: a.d });
 
 export function cmp(a: Fraction, b: Fraction): -1 | 0 | 1 {
   const x = a.n * b.d - b.n * a.d;
@@ -60,9 +58,4 @@ export function sum(values: Iterable<Fraction>): Fraction {
 
 export function fracToString(a: Fraction): string {
   return a.d === 1 ? String(a.n) : `${a.n}/${a.d}`;
-}
-
-/** Normalise a possibly non-reduced object (e.g. loaded from JSON). */
-export function normalize(a: { n: number; d: number }): Fraction {
-  return frac(a.n, a.d);
 }

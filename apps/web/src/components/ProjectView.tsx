@@ -41,6 +41,7 @@ import { useStage, type MainView } from "../state/stage";
 import { arrangeSeats, soundPositions } from "../stage/layout";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 import { AssistantPanel } from "./AssistantPanel";
 import { BarDialogs, type BarDialog } from "./BarDialogs";
 import { EditToolbar } from "./EditToolbar";
@@ -236,7 +237,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
             <Tip label={assistant.draft ? "Undo: discard the assistant's changes (Ctrl+Z)" : lastLabel ? `Undo (Ctrl+Z): ${lastLabel}` : "Undo (Ctrl+Z): nothing to undo yet"}>
               <ActionIcon
                 variant="subtle"
-                data-disabled={(!project.past.length && !assistant.draft) || assistant.running || undefined}
+                {...unavailable((!project.past.length && !assistant.draft) || assistant.running)}
                 onClick={() => (project.past.length || assistant.draft) && !assistant.running && undo()}
                 aria-label="Undo"
               >
@@ -246,7 +247,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
             <Tip label={nextLabel ? `Redo (Ctrl+Y): ${nextLabel}` : "Redo (Ctrl+Y): nothing to redo"}>
               <ActionIcon
                 variant="subtle"
-                data-disabled={!project.future.length || !!assistant.draft || assistant.running || undefined}
+                {...unavailable(!project.future.length || !!assistant.draft || assistant.running)}
                 onClick={() => project.future.length && !assistant.draft && !assistant.running && redo()}
                 aria-label="Redo"
               >

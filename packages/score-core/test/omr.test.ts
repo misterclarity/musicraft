@@ -132,6 +132,16 @@ describe("repairing recognised scores", () => {
   const time = (t: string) => `<attributes><time><beats>${t.split("/")[0]}</beats><beat-type>${t.split("/")[1]}</beat-type></time></attributes>`;
   const recognise = (xml: string, instrument = "trumpet-bb") => importText(xml, { instruments: [instrument], detectPickups: false, sequentialVoices: true }).score;
 
+  it("needs three bars that agree before it changes a time signature", async () => {
+    const { inferTimeSignatures, timeSignatures } = await import("../src");
+    const threeBeats = note("C", 5, 2, "quarter") + note("D", 5, 2, "quarter") + note("E", 5, 2, "quarter");
+    // After a double barline, bars that each miss a beat: two of them are more likely misread notes.
+    const two = recognise(doc("Short", [start() + fourFour, fourFour + doubleBar, threeBeats, threeBeats]));
+    expect(inferTimeSignatures(two).notes).toEqual([]);
+    const three = recognise(doc("Longer", [start() + fourFour, fourFour + doubleBar, threeBeats, threeBeats, threeBeats]));
+    expect(timeSignatures(inferTimeSignatures(three).score)[2]).toEqual({ beats: 3, beatType: 4 });
+  });
+
   it("corrects a time signature that the bars don't add up to, and keeps the rest of the piece", async () => {
     const { repairRecognized, timeSignatures, checkScore } = await import("../src");
     const xml = doc("March", [
@@ -172,6 +182,9 @@ describe("repairing recognised scores", () => {
     expect(plausibleTitle("1st Bb TRUMPET")).toBe(true);
     expect(plausibleTitle("♩ = 120")).toBe(false);
     expect(plausibleTitle("12")).toBe(false);
+    expect(plausibleTitle("x")).toBe(false);
+    expect(plausibleTitle("春")).toBe(true);
+    expect(plausibleTitle("(♩=60) 春")).toBe(false);
   });
 
   it("reads notes after a bass clef that a trumpet never uses in the treble clef", async () => {
@@ -203,6 +216,9 @@ describe("repairing recognised scores", () => {
     expect(short.score.measures.map((m) => m.number)).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
     expect([1, 2, 3, 4, 5].every((m) => isRestBar(short.score, m))).toBe(true);
     expect(short.systemStarts).toEqual([0, 6]);
+    // A double barline printed after the rest comes after its last bar.
+    const barred = importText(doc("Rests", [start() + fourFour, multi(3) + doubleBar, fourFour]));
+    expect(barred.score.measures.map((m) => m.barline ?? "")).toEqual(["", "", "", "double", ""]);
     // Standard MusicXML writes all of them: nothing to add.
     const full = importText(doc("Rests", [start() + fourFour, multi(3), rest(8, "whole"), rest(8, "whole"), fourFour]));
     expect(full.score.measures).toHaveLength(5);

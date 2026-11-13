@@ -31,6 +31,21 @@ export function channelGain(mix: Mix, partId: string): number {
   return isAudible(mix, partId) ? (mix.volumes.get(partId) ?? 1) : 0;
 }
 
+/**
+ * The time in performance `to` at the same place in the music as `time` in performance `from`: the
+ * same played bar, and as far into it. For a change of speed, or of the tempo marks.
+ */
+export function samePlace(from: Performance, to: Performance, time: number): number {
+  const bars = from.measures;
+  let i = bars.length - 1;
+  while (i > 0 && bars[i]!.start > time) i--;
+  const bar = bars[i];
+  const target = to.measures[i];
+  if (!bar || !target) return Math.max(0, Math.min(time, to.duration));
+  const into = bar.duration > 0 ? Math.max(0, Math.min(1, (time - bar.start) / bar.duration)) : 0;
+  return target.start + into * target.duration;
+}
+
 interface Listener {
   position: Vec3;
   forward: Vec3;
@@ -56,12 +71,20 @@ export class Player {
 
   constructor(private callbacks: PlayerCallbacks = {}) {}
 
-  load(score: Score, performance: Performance) {
+  /**
+   * Play these notes. With `at` (seconds into the new performance, e.g. the same place at another
+   * speed), playback carries on from there, or starts there next time when stopped.
+   */
+  load(score: Score, performance: Performance, at?: number) {
+    const resume = at !== undefined && this.playing;
+    if (resume) this.stop(false);
     this.notes = performance.notes;
     this.duration = performance.duration;
     this.families = new Map(score.parts.map((p) => [p.id, getInstrument(p.instrument).family]));
     this.partIds = score.parts.map((p) => p.id);
     this.applyMix();
+    if (resume) void this.play(at);
+    else if (at !== undefined) this.startOffset = Math.max(0, Math.min(at, this.duration));
   }
 
   setMix(mix: Mix) {

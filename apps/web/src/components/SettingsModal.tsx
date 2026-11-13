@@ -27,6 +27,7 @@ import {
 import { diagnoseRecognition, type Diagnosis } from "../lib/diagnose";
 import { useSettings, type Settings, type VisionOverride } from "../lib/settings";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 interface CheckResult {
   llm?: LlmCapabilities;
@@ -111,7 +112,7 @@ export function SettingsModal({ opened, onClose }: { opened: boolean; onClose: (
               variant="light"
               loading={checking}
               onClick={() => draft.serverUrl.trim() && void testConnection()}
-              data-disabled={!draft.serverUrl.trim() || undefined}
+              {...unavailable(!draft.serverUrl.trim())}
             >
               Test connection
             </Button>

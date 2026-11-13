@@ -64,10 +64,6 @@ export function durationValue(d: Duration): Fraction {
   return value;
 }
 
-export function typeFromDenominator(denominator: number): NoteType | undefined {
-  return (Object.keys(TYPE_DENOMINATOR) as NoteType[]).find((t) => TYPE_DENOMINATOR[t] === denominator);
-}
-
 /** A single (possibly dotted) note for exactly this value, without tuplets, or undefined. */
 export function durationFromValue(value: Fraction, maxDots = 3): Duration | undefined {
   for (const type of NOTE_TYPES) {

@@ -52,6 +52,7 @@ import { getSettings, isServerConfigured } from "../lib/settings";
 import { CornerEditor } from "./CornerEditor";
 import { instrumentOptions } from "./NewScoreModal";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 interface PageItem {
   key: string;
@@ -417,7 +418,7 @@ export function ScanImport({
                         </Group>
                         <Group gap={2}>
                           <Tip label={i === 0 ? "This is the first page" : "Move this page earlier"}>
-                            <ActionIcon size="sm" variant="subtle" data-disabled={i === 0 || undefined} onClick={() => i > 0 && moveItem(item.key, -1)} aria-label="Move earlier">
+                            <ActionIcon size="sm" variant="subtle" {...unavailable(i === 0)} onClick={() => i > 0 && moveItem(item.key, -1)} aria-label="Move earlier">
                               <IconArrowUp size={14} />
                             </ActionIcon>
                           </Tip>
@@ -425,7 +426,7 @@ export function ScanImport({
                             <ActionIcon
                               size="sm"
                               variant="subtle"
-                              data-disabled={i === items.length - 1 || undefined}
+                              {...unavailable(i === items.length - 1)}
                               onClick={() => i < items.length - 1 && moveItem(item.key, 1)}
                               aria-label="Move later"
                             >
@@ -466,7 +467,7 @@ export function ScanImport({
                     </Button>
                   </Tip>
                   <Tip label={selected.length === 0 ? "Tick at least one page" : "Next: say which instrument the music is written for"}>
-                    <Button data-disabled={selected.length === 0 || undefined} onClick={() => selected.length > 0 && setStep(1)}>
+                    <Button {...unavailable(selected.length === 0)} onClick={() => selected.length > 0 && setStep(1)}>
                       Next
                     </Button>
                   </Tip>

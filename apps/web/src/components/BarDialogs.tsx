@@ -25,6 +25,7 @@ import {
 import { useState, type ReactNode } from "react";
 import type { Selection } from "../state/project";
 import { Tip } from "./Tip";
+import { unavailable } from "./unavailable";
 
 export type BarDialog = "key" | "time" | "clef" | "tempo" | "rehearsal" | "barline" | "text" | "multirest";
 
@@ -113,7 +114,7 @@ function Actions({ onSave, onRemove, removeLabel, saveDisabled }: { onSave: () =
         )}
       </div>
       <Tip label={saveDisabled ? "Nothing to change yet" : "Apply to the selected bar (Undo takes it back)"}>
-        <Button onClick={() => !saveDisabled && onSave()} data-disabled={saveDisabled || undefined}>
+        <Button onClick={() => !saveDisabled && onSave()} {...unavailable(saveDisabled)}>
           Apply
         </Button>
       </Tip>

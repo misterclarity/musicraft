@@ -70,7 +70,7 @@ Percentages are sequence similarity of notes and chords in reading order. Key si
 homr's main branch (5 Nov 2026, not yet released on PyPI) already addresses several gaps found above, according to its changelog:
 
 - multi-measure rests are written as that many bars;
-- dynamics and strong accents (marcato) are recognized;
+- dynamics and strong accents (marcato) are recognised;
 - ties are recovered from slurs between notes of the same pitch;
 - multiple voices per staff and triplets printed without their number are handled;
 - PDF input, more robust staff detection on phone photos, and the approximate image position of every note (`<!-- imgpos: x, y -->` comments in the MusicXML);
@@ -83,7 +83,7 @@ The recognition container therefore installs homr from that pinned commit. I tes
 The pinned commit read your trumpet page worse than 0.7.0 had read the smaller copy in section 2.1. It found no key signatures, took the tempo mark "(♩=112)" for the title, and in the 12/8 finale it lost barlines and dots and kept 4/4. homr 0.7.0 found the key signatures, barlines and dots there, but read 12/8 as 2/2 and put bass clefs into two lines of the trumpet part. The two versions fail on different things, so:
 
 - The container holds both versions. The app can have each page read by both and keep the reading in which the most bars with notes add up.
-- Musicraft repairs what the music itself gives away: a section's time signature from the length most of its bars agree on, with compound time (12/8, 6/8) when the rhythm groups in threes; clefs that the chosen instrument never uses, reading the notes after them in the treble clef again; a tempo mark taken for the title; multi-bar rests of which homr 0.7 writes only the first bar. On 0.7.0's reading of your page, the bars that add up rose from 38 of 58 to 48 of 58; the 12/8 section came out right, and the notes under the stray bass clefs went back to the trumpet's register.
+- Musicraft repairs what the music itself gives away: a section's time signature from the length most of its bars (and at least three) agree on, with compound time (12/8, 6/8) when the rhythm groups in threes; clefs that the chosen instrument never uses, reading the notes after them in the treble clef again; a tempo mark taken for the title; multi-bar rests of which homr 0.7 writes only the first bar. On 0.7.0's reading of your page, the bars that add up rose from 38 of 58 to 48 of 58; the 12/8 section came out right, and the notes under the stray bass clefs went back to the trumpet's register.
 - Proofreading with the vision model now checks key and time signatures first. Applying a missed key signature also respells the notes that followed the wrong key.
 
 ### 2.5 What this means for the design

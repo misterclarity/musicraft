@@ -181,6 +181,11 @@ export function arrangeSeats(score: Score, venue: Venue, overrides: Record<strin
   return seats.sort((a, b) => a.partIndex - b.partIndex);
 }
 
+/** Whether a player of the score was moved from the standard seating (moves of deleted parts don't count). */
+export function hasMovedPlayers(score: Score, overrides: Record<string, SeatOverride>): boolean {
+  return score.parts.some((part) => overrides[part.id]);
+}
+
 /** The number of arcs a seating uses. */
 export function rowCount(seats: Seat[]): number {
   return seats.reduce((n, s) => Math.max(n, s.row + 1), 1);

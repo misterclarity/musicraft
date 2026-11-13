@@ -30,7 +30,8 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
 2. **Check it.** The Checks tab lists bars that don't add up and notes outside an instrument's range.
    For scanned parts it also lists the rests: recognition reads a multi-bar rest (one bar with a number
    above it) as a single bar, so click each rest to see it on the original and type in how many bars it
-   lasts (or use **Bar → Multi-bar rest…**).
+   lasts (or use **Bar → Multi-bar rest…**). Rests are listed as they are printed: a rehearsal mark,
+   a signature, a repeat or a double barline starts a new one, and stays at its start or end.
    With a vision model, *Proofread against the original with AI* compares every line of the original
    with the recognised notes and proposes fixes that you apply one by one: wrong notes, missed key and
    time signatures (applying a key signature also respells the notes that follow it), dynamics, text,

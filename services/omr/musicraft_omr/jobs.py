@@ -221,7 +221,7 @@ class JobManager:
             source = uploads[spec.file]
             data = source.read_bytes()
             image = render_pdf_page(data, spec.page) if source.suffix == ".pdf" else open_image(data)
-            corners = [tuple(c) for c in spec.corners] if spec.corners else None
+            corners = [(float(x), float(y)) for x, y in spec.corners] if spec.corners else None
             image = prepare_page(
                 image, corners=corners, rotation=spec.rotation, max_side=self.settings.max_image_side
             )

@@ -331,13 +331,15 @@ register<PlayerComponent>("mc-player", {
     }
   },
 
-  tick(time: number) {
+  tick(time: number, delta: number) {
     const info = this.info;
     if (!info) return;
     const activity = live.parts.get(info.partId);
     const target = activity ? 0.3 + 0.7 * activity.level : 0;
-    // Light up quickly, fade a little slower.
-    this.level += (target - this.level) * (target > this.level ? 0.5 : 0.12);
+    // Light up quickly, fade a little slower: per 60th of a second, half or an eighth of the way,
+    // at any frame rate.
+    const rate = target > this.level ? 0.5 : 0.12;
+    this.level += (target - this.level) * (1 - Math.pow(1 - rate, (delta || 16.7) / 16.7));
     this.glow.material.opacity = (info.audible ? 0.14 : 0.06) + 0.8 * this.level;
     this.glow.scale.setScalar(1 + 0.12 * this.level);
     if (this.instrumentGroup) this.instrumentGroup.position.y = activity ? 0.006 * Math.sin(time / 90) * activity.level : 0;

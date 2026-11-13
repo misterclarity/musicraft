@@ -40,10 +40,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ChangeInstrumentModal } from "../components/ChangeInstrumentModal";
 import { Tip } from "../components/Tip";
+import { unavailable } from "../components/unavailable";
 import { onPlaybackFrame, partAudible, usePlayback } from "../state/playback";
 import { useStage } from "../state/stage";
 import { live, partActivity } from "./activity";
-import { arrangeSeats, clampToStage, facingConductor, floorHeight, rowCount, STEREO_LISTENER, VENUES, viewpoint, type Seat, type ViewpointId } from "./layout";
+import { arrangeSeats, clampToStage, facingConductor, floorHeight, hasMovedPlayers, rowCount, STEREO_LISTENER, VENUES, viewpoint, type Seat, type ViewpointId } from "./layout";
 import { familyColor } from "./models";
 import { noteName, partRanges, type PartRange } from "./ranges";
 import { players, stageState } from "./registry";
@@ -104,7 +105,7 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
   const [ready, setReady] = useState(false);
   const sceneRef = useRef<HTMLElement>(null);
   const cameraRef = useRef<HTMLElement>(null);
-  const versions = useRef(new Map<string, number>());
+  const versions = useRef(new Map<string, { signature: string; version: number }>());
 
   const seats = useMemo(() => arrangeSeats(score, stage.venue, stage.seats), [score, stage.venue, stage.seats]);
   const rows = rowCount(seats);
@@ -113,11 +114,10 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
 
   // What the 3D components need, by part id; a new version number makes a player redraw.
   const playerVersion = (partId: string, signature: string) => {
-    const key = `${partId}:${signature}`;
     const previous = versions.current.get(partId);
-    const version = previous === undefined ? 1 : (versions.current.get(key) ?? previous + 1);
-    versions.current.set(partId, version);
-    versions.current.set(key, version);
+    if (previous?.signature === signature) return previous.version;
+    const version = (previous?.version ?? 0) + 1;
+    versions.current.set(partId, { signature, version });
     return version;
   };
   const playerAttributes = new Map<string, string>();
@@ -142,6 +142,13 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
   stageState.performance = playback.performance;
   stageState.spatial = stage.spatial;
   stageState.moving = moving;
+  // Forget the players of deleted parts once their entities are gone.
+  useEffect(() => {
+    const ids = new Set(score.parts.map((p) => p.id));
+    for (const id of [...players.keys()]) if (!ids.has(id)) players.delete(id);
+    for (const id of [...versions.current.keys()]) if (!ids.has(id)) versions.current.delete(id);
+  }, [score]);
+  const moved = hasMovedPlayers(score, stage.seats);
 
   // Who is playing, frame by frame.
   useEffect(
@@ -180,7 +187,10 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
     else scene?.addEventListener("loaded", onLoaded);
     return () => {
       scene?.removeEventListener("loaded", onLoaded);
-      scene?.renderer?.forceContextLoss();
+      // In development React also runs this right after mounting, with the scene still on the page.
+      setTimeout(() => {
+        if (scene && !scene.isConnected) scene.renderer?.forceContextLoss();
+      });
     };
   }, []);
 
@@ -229,13 +239,18 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
       const cameraEl = cameraRef.current;
       if (!seat || !player || !cameraEl) return;
       dragged = false;
-      cameraEl.setAttribute("look-controls", "enabled: false");
+      // Neither the mouse nor a finger turns the camera while a player is carried.
+      cameraEl.setAttribute("look-controls", "enabled: false; touchEnabled: false");
       scene.style.cursor = "grabbing";
       const raycaster = new THREE.Raycaster();
       const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -seat.y);
       const hit = new THREE.Vector3();
       let place = { x: seat.x, z: seat.z };
-      const onMove = (move: MouseEvent) => {
+      // The pointer (mouse, pen or finger) that carries the player.
+      let pointer: number | null = null;
+      const onMove = (move: PointerEvent) => {
+        pointer ??= move.pointerId;
+        if (move.pointerId !== pointer) return;
         const rect = scene.canvas.getBoundingClientRect();
         const ndc = new THREE.Vector2(((move.clientX - rect.left) / rect.width) * 2 - 1, -((move.clientY - rect.top) / rect.height) * 2 + 1);
         raycaster.setFromCamera(ndc, scene.camera);
@@ -245,15 +260,18 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
         player.object3D.position.set(place.x, floorHeight(stage.venue, place.x, place.z, rows), place.z);
         player.object3D.rotation.y = (facingConductor(place.x, place.z) * Math.PI) / 180;
       };
-      const onUp = () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        cameraEl.setAttribute("look-controls", "enabled: true");
+      const onUp = (up: PointerEvent) => {
+        if (pointer !== null && up.pointerId !== pointer) return;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        cameraEl.setAttribute("look-controls", "enabled: true; touchEnabled: true");
         scene.style.cursor = "";
         if (dragged) useStage.getState().moveSeat(id, place);
       };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     };
     // The cursor checks what the mouse points at only every few frames: on a quick click or a
     // tap, look again right away so the press lands on the player under it.
@@ -288,7 +306,7 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
       <a-scene
         ref={sceneRef}
         embedded=""
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", touchAction: "none" }}
         renderer="antialias: true; colorManagement: true; maxCanvasWidth: 2560; maxCanvasHeight: 1600"
         shadow="type: pcf"
         cursor="rayOrigin: mouse; fuse: false"
@@ -383,11 +401,11 @@ function Stage({ score, selectedPartId, onSelectPart, onShowInScore, onApply }: 
               <IconArrowsMove size={16} />
             </ActionIcon>
           </Tip>
-          <Tip label={Object.keys(stage.seats).length ? "Put every player back in the standard seating" : "Players are in the standard seating"}>
+          <Tip label={moved ? "Put every player back in the standard seating" : "Players are in the standard seating"}>
             <ActionIcon
               variant="default"
-              data-disabled={!Object.keys(stage.seats).length || undefined}
-              onClick={() => Object.keys(stage.seats).length && stage.resetSeats()}
+              {...unavailable(!moved)}
+              onClick={() => moved && stage.resetSeats()}
               aria-label="Standard seating"
             >
               <IconLayoutGrid size={16} />

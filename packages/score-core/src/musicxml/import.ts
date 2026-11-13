@@ -23,6 +23,7 @@ import {
   DYNAMICS,
   measureIsEmpty,
   measureLengths,
+  moveRestEnd,
   renumberMeasures,
   SCORE_SCHEMA_VERSION,
   voiceLength,
@@ -212,6 +213,8 @@ class Importer {
       for (const part of score.parts) {
         part.measures.splice(at, 0, ...Array.from({ length: missing }, () => emptyMeasureFor(part.staves)));
       }
+      // A barline, repeat or volta end printed after the rest belongs after its last bar.
+      moveRestEnd(score.measures, at - 1, at + missing - 1);
       this.systemStarts = new Set([...this.systemStarts].map((s) => (s >= at ? s + missing : s)));
       added += missing;
     }
