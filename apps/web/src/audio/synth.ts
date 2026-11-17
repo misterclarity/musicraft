@@ -1,5 +1,5 @@
 import type { InstrumentFamily } from "@musicraft/score-core";
-import { nearestNote, sampleSet, type SampleSet } from "./samples";
+import { layerFor, nearestNote, sampleSet, type SampleSet } from "./samples";
 
 export interface Vec3 {
   x: number;
@@ -263,13 +263,16 @@ export class Synth {
     }
   }
 
-  /** A recorded note, shifted to the pitch, looped while held, softer and darker when played quietly. */
+  /**
+   * A recorded note: the soft or the loud recording for its dynamic, shifted to its pitch (and in
+   * tune), looped while held, and quieter when played softly (and darker, with one recording only).
+   */
   private recorded(set: SampleSet, time: number, duration: number, midi: number, velocity: number, family: InstrumentFamily, channelId?: string) {
     const ctx = this.context;
-    const sample = nearestNote(set.notes, midi);
+    const sample = nearestNote(layerFor(set.layers, velocity).notes, midi);
     const source = ctx.createBufferSource();
     source.buffer = sample.buffer;
-    source.playbackRate.value = 2 ** ((midi - sample.midi) / 12);
+    source.playbackRate.value = 2 ** ((midi - sample.midi - sample.cents / 100) / 12);
     if (set.sustains && sample.loop) {
       source.loop = true;
       source.loopStart = sample.loop.start;
@@ -278,7 +281,7 @@ export class Synth {
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     tone.Q.value = 0.5;
-    tone.frequency.value = 1500 + 16000 * (velocity / 127) ** 2;
+    tone.frequency.value = set.layers.length > 1 ? 20000 : 1500 + 16000 * (velocity / 127) ** 2;
     const gain = ctx.createGain();
     source.connect(tone).connect(gain).connect(channelId ? this.channel(channelId).input : this.output);
     const level = 1.2 * (velocity / 100) ** 1.5;

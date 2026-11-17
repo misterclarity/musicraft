@@ -1,11 +1,30 @@
 Musicraft's instrument samples
 ==============================
 
-These notes were rendered from the MuseScore General soundfont (version 0.2.1, the
-"MuseScore_General_Full.sf2" file of Debian's musescore-general-soundfont-lossless package) with
-FluidSynth, by apps/web/scripts/build-samples.py: one note every three semitones per General MIDI
-program, mixed to mono, levelled, looped and encoded as MP3. The soundfont's licence and credits
-follow, as distributed with it.
+Real recordings, where a free library has the instrument:
+
+- Brass (trumpet, trombone, tuba, horn), woodwinds (piccolo, flute, oboe, clarinet, bassoon),
+  strings (violin, viola, cello, double bass) and organ: VS Chamber Orchestra 2 Community Edition
+  (VSCO 2 CE), https://github.com/sgossner/VSCO-2-CE, by Versilian Studios LLC. Recorded by Sam
+  Gossner and Simon Dalzell, sample cutting by Elan Hickler (Soundemote); the pipe organ was
+  sampled by Simon Dalzell of Ivy Audio. Released under CC0 1.0 (public domain dedication).
+- Saxophones (tenor saxophone, also for alto and baritone, and saxello for soprano) and piano
+  (Steinway B grand): Versilian Community Sample Library (VCSL), https://github.com/sgossner/VCSL,
+  by Versilian Studios LLC. Released under CC0 1.0 (public domain dedication).
+
+CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/ — the authors have waived all
+copyright and related rights; no credit is required, but it is gladly given here.
+
+Rendered notes, for the instruments neither library has (cor anglais, guitar, choir) and for notes
+a recorded instrument doesn't reach: the MuseScore General soundfont (version 0.2.1, the
+"MuseScore_General_Full.sf2" file of Debian's musescore-general-soundfont-lossless package),
+rendered with FluidSynth.
+
+apps/web/scripts/build-samples.py made these files from the sources above: soft and loud
+recordings of each note it has, trimmed, mixed to mono, levelled, tuned, looped where sustained,
+and encoded as MP3. manifest.json lists, for each instrument, the sources of its notes.
+
+The MuseScore General soundfont's licence and credits follow, as distributed with it.
 
 Licence:
 

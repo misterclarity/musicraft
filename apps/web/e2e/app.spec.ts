@@ -358,6 +358,10 @@ test("practises with a count-in, a metronome and a loop that gets faster each ti
 });
 
 test("exports the music as an audio file", async ({ page }) => {
+  const recordings: string[] = [];
+  page.on("request", (r) => {
+    if (/\/samples\/trumpet\/\d+[pf]?\.mp3$/.test(r.url())) recordings.push(r.url());
+  });
   await importFile(page, "trumpet-part.musicxml");
   await page.getByRole("button", { name: "Export" }).click();
   await page.getByRole("menuitem", { name: /Audio or play-along/ }).click();
@@ -374,6 +378,9 @@ test("exports the music as an audio file", async ({ page }) => {
   let loudest = 0;
   for (let i = 44; i < wav.length; i += 2) loudest = Math.max(loudest, Math.abs(wav.readInt16LE(i)));
   expect(loudest).toBeGreaterThan(3000);
+  // With the trumpet's real recordings, soft and loud.
+  expect(recordings.some((url) => url.endsWith("p.mp3"))).toBe(true);
+  expect(recordings.some((url) => url.endsWith("f.mp3"))).toBe(true);
 });
 
 test("explains every control in a tooltip, also when it can't be used yet", async ({ page }) => {

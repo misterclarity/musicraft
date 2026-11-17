@@ -151,7 +151,7 @@ export function PlaybackBar({ score, selection }: { score: Score; selection: Sel
             />
             <Text size="xs" c="dimmed">
               {playback.recorded
-                ? "Recorded instruments, downloaded the first time each instrument plays (about half a megabyte)."
+                ? "Real recordings of the instruments, soft and loud, downloaded the first time each one plays (about half a megabyte each)."
                 : "A simple synthesized sound: no downloads, and each instrument family still sounds different."}
             </Text>
           </Stack>

@@ -71,8 +71,12 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
      seats; their sound moves with them (and the score view's stereo follows the seating too).
    - It works in a VR headset as well (the goggles button).
 
-   Playback uses recorded instruments (downloaded the first time an instrument plays, about half a
-   megabyte each); the speaker menu in the header switches to a simple synthesizer instead.
+   Playback uses real recordings of the instruments, a soft and a loud one of each note: brass,
+   woodwinds, strings and pipe organ from VSCO 2 Community Edition, saxophones and a Steinway grand
+   from the Versilian Community Sample Library (both public domain). Cor anglais, guitar and choir,
+   which neither library has, are rendered from the MuseScore General soundfont. Each instrument is
+   downloaded the first time it plays (about half a megabyte, the piano 1.4 MB); the speaker menu
+   in the header switches to a simple synthesizer instead.
 5. **Practise.** The metronome button in the header opens the practice tools: a click on every beat
    (louder on the first of the bar, dotted quarters in 6/8 and 12/8), a count-in (before a pickup,
    just the beats that lead to it), a loop of the selected bars, and a speed trainer that starts the
@@ -119,11 +123,13 @@ uv run pytest
 MUSICRAFT_OMR_ENGINE=fake uv run musicraft-omr   # service with a stand-in engine on :8070
 ```
 
-The recorded instruments in `apps/web/public/samples` are rendered from the MuseScore General
-soundfont by `apps/web/scripts/build-samples.py` (needs fluidsynth, ffmpeg and numpy; on Ubuntu
-`apt install fluidsynth musescore-general-soundfont-lossless`). Run it again after adding an
-instrument with a General MIDI program that has no set yet; a unit test checks that every instrument
-in the catalog has one.
+The instrument sounds in `apps/web/public/samples` are made by `apps/web/scripts/build-samples.py`
+from the recordings of [VSCO 2 CE](https://github.com/sgossner/VSCO-2-CE) and
+[VCSL](https://github.com/sgossner/VCSL) (its docstring says how to fetch just the folders it
+uses) and, for the rest, the MuseScore General soundfont. It needs fluidsynth, ffmpeg and numpy
+(on Ubuntu `apt install fluidsynth ffmpeg musescore-general-soundfont-lossless`). Run it again
+after adding an instrument with a General MIDI program that has no set yet; a unit test checks that
+every instrument in the catalog has notes within three semitones of everything it can play.
 
 ## Deployment
 
@@ -159,6 +165,7 @@ Allow the site's origin in `gateway.py`'s CORS settings: `https://<site-name>.ne
 
 ## License
 
-GPL-3.0. The recognition container includes homr (AGPL-3.0). The recorded instrument notes come
-from the MuseScore General soundfont (MIT, parts public domain or CC0); see
+GPL-3.0. The recognition container includes homr (AGPL-3.0). The instrument recordings come from
+VSCO 2 Community Edition and the Versilian Community Sample Library (both CC0, public domain), the
+other instrument sounds from the MuseScore General soundfont (MIT); see
 [`apps/web/public/samples/LICENSE.txt`](apps/web/public/samples/LICENSE.txt).
