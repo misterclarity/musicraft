@@ -32,9 +32,12 @@ export interface PerformanceNote {
 
 export interface PlayedMeasure {
   measureIndex: number;
+  /** Seconds from the start. */
   start: number;
   duration: number;
   startWhole: number;
+  /** Whole notes the bar lasts as played (a pickup can be shorter than its time signature). */
+  length: number;
 }
 
 export interface Performance {
@@ -190,7 +193,7 @@ export function buildPerformance(score: Score, options: PerformanceOptions = {})
       if (longest.n > 0 && lte(longest, length)) actualLength = longest;
     }
     const measureSeconds = toNumber(actualLength) * secondsPerWhole;
-    measures.push({ measureIndex: m, start: timeSec, duration: measureSeconds, startWhole: whole });
+    measures.push({ measureIndex: m, start: timeSec, duration: measureSeconds, startWhole: whole, length: toNumber(actualLength) });
 
     for (const { part, index: partIndex } of parts) {
       const pm = part.measures[m];
@@ -278,4 +281,74 @@ export function buildPerformance(score: Score, options: PerformanceOptions = {})
   }
   notes.sort((a, b) => a.start - b.start || a.midi - b.midi);
   return { notes, measures, tempos, timeSignatures: timeSigs, duration: timeSec };
+}
+
+// ---------------------------------------------------------------------------
+// Practising: metronome, count-in and loops
+// ---------------------------------------------------------------------------
+
+export interface Click {
+  /** Seconds from the start of the performance (before 0 for a count-in at the start). */
+  time: number;
+  /** The first beat of a bar, clicked louder. */
+  downbeat: boolean;
+}
+
+/** The beat a metronome clicks in a time signature (whole notes), and how many a full bar has. */
+function beatOf(time: { beats: number; beatType: number }): { beat: number; perBar: number } {
+  // Compound time (6/8, 9/8, 12/8) is counted in dotted quarters.
+  const compound = time.beatType === 8 && time.beats % 3 === 0 && time.beats > 3;
+  return compound ? { beat: 3 / time.beatType, perBar: time.beats / 3 } : { beat: 1 / time.beatType, perBar: Math.max(1, time.beats) };
+}
+
+/** The beats of a played bar, and where its first one falls in a full bar (a pickup starts late). */
+function barBeats(score: Score, performance: Performance, index: number) {
+  const bar = performance.measures[index]!;
+  const { beat, perBar } = beatOf(timeSignatures(score)[bar.measureIndex] ?? { beats: 4, beatType: 4 });
+  const count = Math.max(1, Math.round(bar.length / beat));
+  const first = index === 0 && count < perBar ? perBar - count : 0;
+  const seconds = bar.length > 0 ? (bar.duration / bar.length) * beat : 0;
+  return { bar, perBar, count, first, seconds };
+}
+
+/**
+ * The beats a metronome clicks through a performance: quarter notes in 4/4, half notes in 2/2,
+ * dotted quarters in 6/8 and 12/8, eighths in 5/8. A pickup has the last beats of a full bar.
+ */
+export function metronomeClicks(score: Score, performance: Performance): Click[] {
+  const clicks: Click[] = [];
+  performance.measures.forEach((_, i) => {
+    const { bar, perBar, count, first, seconds } = barBeats(score, performance, i);
+    if (bar.length <= 0) return;
+    for (let k = 0; k < count; k++) clicks.push({ time: bar.start + k * seconds, downbeat: (first + k) % perBar === 0 });
+  });
+  return clicks;
+}
+
+/**
+ * The clicks that count in before playing from a played bar: a full bar of beats at its tempo, or
+ * the beats before a pickup ("1, 2, 3" before a pickup on 4); a bar more when that would be fewer
+ * than three clicks (2/2, 6/8).
+ */
+export function countInClicks(score: Score, performance: Performance, index: number): Click[] {
+  if (!performance.measures[index]) return [];
+  const { bar, perBar, first, seconds } = barBeats(score, performance, index);
+  const beat = seconds > 0 ? seconds : 0.6;
+  let before = first;
+  while (before < 3) before += perBar;
+  return Array.from({ length: before }, (_, k) => ({
+    time: bar.start - (before - k) * beat,
+    downbeat: (((first - before + k) % perBar) + perBar) % perBar === 0,
+  }));
+}
+
+/** Where bars `from` to `to` of the score play (the first time through), in seconds and played bars. */
+export function playedRange(performance: Performance, from: number, to: number): { start: number; end: number; firstBar: number; lastBar: number } | null {
+  const bars = performance.measures;
+  const first = bars.findIndex((m) => m.measureIndex === from);
+  if (first < 0) return null;
+  let last = -1;
+  for (let k = first; k < bars.length && last < 0; k++) if (bars[k]!.measureIndex === to) last = k;
+  if (last < 0) return null;
+  return { start: bars[first]!.start, end: bars[last]!.start + bars[last]!.duration, firstBar: first, lastBar: last };
 }

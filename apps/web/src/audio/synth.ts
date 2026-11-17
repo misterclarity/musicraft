@@ -1,4 +1,5 @@
 import type { InstrumentFamily } from "@musicraft/score-core";
+import { nearestNote, sampleSet, type SampleSet } from "./samples";
 
 export interface Vec3 {
   x: number;
@@ -14,6 +15,12 @@ export type SpaceMode = "stereo" | "room";
 /** The acoustics: none, a concert hall's reverberation, or an open-air bandstand's short echo. */
 export type Room = "dry" | "hall" | "bandstand";
 
+/** How a part sounds: its instrument family (for the simple sound) and General MIDI program (for the recorded one). */
+export interface Sound {
+  family: InstrumentFamily;
+  program: number;
+}
+
 /** One part's way to the speakers: volume, position, and a send to the room's reverberation. */
 interface Channel {
   input: GainNode;
@@ -22,11 +29,14 @@ interface Channel {
 }
 
 /**
- * A small WebAudio synthesizer with a recognisable sound per instrument family. Good enough to
- * proofread and audition arrangements without downloading sample libraries.
+ * Plays notes through per-part channels in a room: with recorded instrument notes when they are
+ * loaded (see samples.ts), otherwise with a small synthesizer that has a recognisable sound per
+ * instrument family. Works on a live AudioContext or an OfflineAudioContext (audio export).
  */
 export class Synth {
-  readonly context: AudioContext;
+  readonly context: BaseAudioContext;
+  /** Play recorded notes where they are loaded (otherwise always the simple sound). */
+  useSamples = true;
   private readonly output: GainNode;
   private readonly reverb: ConvolverNode;
   private readonly reverbReturn: GainNode;
@@ -35,8 +45,8 @@ export class Synth {
   private mode: SpaceMode = "stereo";
   private room: Room = "dry";
 
-  constructor() {
-    this.context = new AudioContext({ latencyHint: "interactive" });
+  constructor(context?: BaseAudioContext) {
+    this.context = context ?? new AudioContext({ latencyHint: "interactive" });
     const compressor = this.context.createDynamicsCompressor();
     compressor.threshold.value = -14;
     compressor.ratio.value = 4;
@@ -127,7 +137,13 @@ export class Synth {
   }
 
   /** Schedule one note. `time` is in AudioContext seconds; `channelId` routes it through that part's channel. */
-  note(time: number, duration: number, midi: number, velocity: number, family: InstrumentFamily, channelId?: string) {
+  note(time: number, duration: number, midi: number, velocity: number, sound: Sound, channelId?: string) {
+    const recorded = this.useSamples ? sampleSet(sound.program) : undefined;
+    if (recorded) {
+      this.recorded(recorded, time, duration, midi, velocity, sound.family, channelId);
+      return;
+    }
+    const family = sound.family;
     const ctx = this.context;
     const frequency = 440 * 2 ** ((midi - 69) / 12);
     const level = 0.22 * (velocity / 127) ** 1.4;
@@ -245,6 +261,64 @@ export class Synth {
         s.disconnect();
       };
     }
+  }
+
+  /** A recorded note, shifted to the pitch, looped while held, softer and darker when played quietly. */
+  private recorded(set: SampleSet, time: number, duration: number, midi: number, velocity: number, family: InstrumentFamily, channelId?: string) {
+    const ctx = this.context;
+    const sample = nearestNote(set.notes, midi);
+    const source = ctx.createBufferSource();
+    source.buffer = sample.buffer;
+    source.playbackRate.value = 2 ** ((midi - sample.midi) / 12);
+    if (set.sustains && sample.loop) {
+      source.loop = true;
+      source.loopStart = sample.loop.start;
+      source.loopEnd = sample.loop.end;
+    }
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.Q.value = 0.5;
+    tone.frequency.value = 1500 + 16000 * (velocity / 127) ** 2;
+    const gain = ctx.createGain();
+    source.connect(tone).connect(gain).connect(channelId ? this.channel(channelId).input : this.output);
+    const level = 1.2 * (velocity / 100) ** 1.5;
+    const end = time + Math.max(0.03, duration);
+    const release = !set.sustains ? 0.25 : family === "strings" || family === "voice" ? 0.18 : 0.1;
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(level, time + 0.004);
+    gain.gain.setValueAtTime(level, Math.max(end, time + 0.004));
+    gain.gain.setTargetAtTime(0, end, release / 3);
+    source.start(time, sample.start);
+    source.stop(end + release * 2);
+    this.active.add(source);
+    source.onended = () => {
+      this.active.delete(source);
+      source.disconnect();
+      tone.disconnect();
+      gain.disconnect();
+    };
+  }
+
+  /** A metronome click: higher and louder on the first beat of a bar, straight to the speakers. */
+  click(time: number, downbeat: boolean, volume = 0.7) {
+    const ctx = this.context;
+    const tone = ctx.createOscillator();
+    const gain = ctx.createGain();
+    tone.type = "triangle";
+    tone.frequency.value = downbeat ? 1760 : 1245;
+    const level = Math.max(0, Math.min(1, volume)) * (downbeat ? 0.55 : 0.36);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(level, time + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+    tone.connect(gain).connect(this.output);
+    tone.start(time);
+    tone.stop(time + 0.07);
+    this.active.add(tone);
+    tone.onended = () => {
+      this.active.delete(tone);
+      tone.disconnect();
+      gain.disconnect();
+    };
   }
 
   /** Silence everything that is playing or scheduled. */

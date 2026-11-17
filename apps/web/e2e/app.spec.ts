@@ -117,7 +117,9 @@ test("reads a photo with the recognition service, then proofreads it against the
   // The server has a second homr: every page is read twice and the better reading kept.
   await expect(page.getByRole("checkbox", { name: /Also read every page with homr 0\.7\.0/ })).toBeChecked();
   await page.getByRole("button", { name: /^Read \d+ page/ }).click();
-  await expect(page.getByTestId("scan-readings")).toContainText("page.png: kept the second reading (homr 0.7.0): 7 of 7 bars with notes add up, against 6 of 7 in the first (mock 1).");
+  await expect(page.getByTestId("scan-readings")).toContainText(
+    "page.png: kept the second reading (homr 0.7.0) for every line: 7 of 7 bars with notes add up, against 6 of 7 in the first (mock 1).",
+  );
   // The tempo mark the recognition took for the title is dropped; the file name is used instead.
   await expect(page.getByTestId("scan-repairs")).toContainText('"(d=112)" is not a title');
   await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue("page");
@@ -130,8 +132,20 @@ test("reads a photo with the recognition service, then proofreads it against the
   await page.getByRole("tab", { name: "History" }).click();
   await expect(page.getByText("Corrected automatically")).toBeVisible();
   await expect(page.getByText("Recognised from scan, before automatic corrections")).toBeVisible();
+  // Nothing corrected by hand yet: every note of the scan is still there.
+  await page.getByRole("button", { name: "Compare with the scan" }).click();
+  await expect(page.getByTestId("scan-accuracy-report")).toContainText("The scan had 19 of the 19 notes right (100%).");
+  await expect(page.getByTestId("scan-accuracy-report")).toContainText("Lines read by homr 0.7.0: 19 of 19 right (100%).");
 
+  // The other engine read bar 3 differently: its version can be put in, and taken out again.
   await page.getByRole("tab", { name: /Checks/ }).click();
+  const disagreement = page.getByTestId("disagreement").filter({ hasText: "Bar 3" });
+  await expect(disagreement).toContainText("A♭5, or");
+  await disagreement.getByRole("button", { name: "Use" }).click();
+  await expect(disagreement).toContainText("In use");
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(disagreement.getByRole("button", { name: "Use" })).toBeVisible();
+
   await page.getByRole("button", { name: /Proofread against the original/ }).click();
   await page.getByRole("button", { name: "Start proofreading" }).click();
   await expect(page.getByText(/Checked 1 of 1 lines/)).toBeVisible();
@@ -322,6 +336,44 @@ test.describe("on a touch screen", () => {
     await expect.poll(() => placeOf(page, tuba.id)).not.toEqual(before);
     expect(await yaw()).toBe(turned);
   });
+});
+
+test("practises with a count-in, a metronome and a loop that gets faster each time round", async ({ page }) => {
+  await importFile(page, "trumpet-part.musicxml");
+  await page.getByTestId("practice").click();
+  for (const name of ["Metronome", "Count in", "Speed trainer"]) await page.getByRole("switch", { name }).check({ force: true });
+  // The speed trainer loops: bar 2 alone, from 70% and 5% faster each time.
+  await expect(page.getByRole("switch", { name: /^Loop/ })).toBeChecked();
+  await page.keyboard.press("Escape");
+  const notes = page.locator(".score-page g.note");
+  const box = (await notes.nth(3).boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.getByTestId("play").click();
+  await page.getByTestId("practice").click();
+  await expect(page.getByTestId("practice-pass")).toContainText("Round 1, at 70%");
+  await expect(page.getByTestId("practice-pass")).toContainText("Round 2, at 75%", { timeout: 20_000 });
+  await expect(page.locator("input[aria-label=Tempo]")).toHaveValue("75%");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Stop" }).click();
+});
+
+test("exports the music as an audio file", async ({ page }) => {
+  await importFile(page, "trumpet-part.musicxml");
+  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("menuitem", { name: /Audio or play-along/ }).click();
+  await page.getByRole("switch", { name: "Count in" }).check({ force: true });
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download WAV" }).click()]);
+  expect(download.suggestedFilename()).toBe("Test March.wav");
+  const wav = readFileSync(await download.path());
+  expect(wav.toString("ascii", 0, 4)).toBe("RIFF");
+  const channels = wav.readUInt16LE(22);
+  const seconds = wav.readUInt32LE(40) / (channels * 2 * wav.readUInt32LE(24));
+  // A bar of count-in, 19 seconds of music and the hall's echo.
+  expect(seconds).toBeGreaterThan(21);
+  expect(seconds).toBeLessThan(26);
+  let loudest = 0;
+  for (let i = 44; i < wav.length; i += 2) loudest = Math.max(loudest, Math.abs(wav.readInt16LE(i)));
+  expect(loudest).toBeGreaterThan(3000);
 });
 
 test("explains every control in a tooltip, also when it can't be used yet", async ({ page }) => {

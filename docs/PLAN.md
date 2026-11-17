@@ -86,6 +86,16 @@ The pinned commit read your trumpet page worse than 0.7.0 had read the smaller c
 - Musicraft repairs what the music itself gives away: a section's time signature from the length most of its bars (and at least three) agree on, with compound time (12/8, 6/8) when the rhythm groups in threes; clefs that the chosen instrument never uses, reading the notes after them in the treble clef again; a tempo mark taken for the title; multi-bar rests of which homr 0.7 writes only the first bar. On 0.7.0's reading of your page, the bars that add up rose from 38 of 58 to 48 of 58; the 12/8 section came out right, and the notes under the stray bass clefs went back to the trumpet's register.
 - Proofreading with the vision model now checks key and time signatures first. Applying a missed key signature also respells the notes that followed the wrong key.
 
+### 2.4.2 Two readings, line by line (17 Nov 2026)
+
+Keeping the better reading of a whole page throws away the lines the other engine read better. Now:
+
+- Where both readings found the same lines of music, each line comes from the reading in which more of its bars add up and fewer don't. First, where the readings found different key signatures for a line, the one with more sharps or flats as printed wins (engines miss key signatures far more often than they invent them), and the other reading's notes that followed its key are respelled. Key and time signatures and clefs are written out where a line from one reading follows one from the other. Where the readings found different lines (one engine ran two lines together or split one), the better reading of the page is kept, as before.
+- The bars of the two readings are paired by their notes (a sequence alignment, so it works whatever the line breaks), and the bars where they found other pitches, the same melody in another rhythm, or no such bar at all are listed in the Checks tab, with the other engine's version to put in. These are the places most worth comparing with the original.
+- To measure rather than guess, the History tab compares the scan with the score once corrected: notes in the same bar and place with the same pitch and length count as read right, overall, after the automatic corrections, and for the lines each engine read.
+
+Measured on homr 0.7.0's readings of your trumpet page and of four preprocessed copies of it (the two homr versions can't both run in this development environment, so these copies stand in for a second engine, failing in similar rather than different places): choosing by line never did worse than choosing by page and gained one or two bars that add up in half of the pairs; four of the ten pairs found different lines and kept the page choice. The readings disagreed in 7 to 30 of the page's 58 bars. With two genuinely different engines the gain should be larger, and the History figures from your corrected scores will show it.
+
 ### 2.5 What this means for the design
 
 1. OMR gives a good first draft, not a finished score. The review screen and the editor are core features, not extras.
@@ -123,7 +133,8 @@ flowchart LR
 - Vite + React + TypeScript, installable as a PWA (progressive web app) on phones and tablets.
 - Verovio runs as WebAssembly in a background worker. It draws the pages and produces MIDI, the time map, and the SVG used for PDF export.
 - **Editor:** a selection layer over Verovio's SVG, using the shared element IDs. Keyboard-first (MuseScore-like shortcuts) plus a touch palette.
-- **Playback:** generated directly from the score model and played by a small built-in WebAudio synthesizer, with per-part mute, tempo control and note highlighting. Sampled SoundFont instruments can replace the synthesizer later.
+- **Playback:** generated directly from the score model with per-part mute, solo and volume, speed and note highlighting. Instruments are recorded notes (a note every three semitones per General MIDI program, rendered from the MuseScore General soundfont, MIT; 5.7 MB in all, loaded only for the instruments a score uses), shifted to pitch and looped while held, with a small WebAudio synthesizer as the alternative and fallback.
+- **Practising:** metronome, count-in, loops of the selected bars and a speed trainer. The player schedules a timeline of stretches, so each pass of a loop can be another performance of the music (a little faster) that starts exactly where the last one ends.
 - **Import:** drag and drop PDFs, images or MusicXML, or use the phone camera. Page thumbnails via pdf.js; corner adjustment for photos.
 - **Storage:** IndexedDB (via Dexie) holds projects, version history, original page images and OMR results. Export and import as a `.musicraft` file: a zip of the score data, MusicXML, images and history.
 - **Settings:** server URL, API key, and a connection test. The model, its context size and vision support are detected from `/v1/models` (and `/props` when the gateway forwards it); you can override them if detection is incomplete.
@@ -191,8 +202,9 @@ Then you can ask things like "give the B section melody to the horn", "add a tro
 - **MusicXML** (`.musicxml` / `.mxl`) for MuseScore, Dorico, Sibelius, Finale and others.
 - **MIDI** for playback, DAWs and practice.
 - **MEI**, which Verovio provides at no extra cost, for scholarly tools.
+- **Audio** (WAV): rendered in the browser faster than real time with the playback instruments, room and seating; every part, a play-along without your part, or chosen parts, at any speed, with a count-in and a metronome if wanted.
 - **Project file** (`.musicraft`) for backup and moving between devices.
-- **Later:** audio practice tracks (WAV), MuseScore files (`.mscz`), and MuseScore-engraved PDFs produced by the container.
+- **Later:** MuseScore files (`.mscz`), and MuseScore-engraved PDFs produced by the container.
 
 ### 3.8 Security and privacy
 
@@ -229,7 +241,8 @@ Each milestone is one pull request (or a short series) and is usable on its own.
 | M4 | **AI assistant:** settings and model detection, chat with tool calling, change previews, vision proofreading of OMR results | ask "make this a C trumpet part and move bars 17–24 down an octave" |
 | M5 | **Arranging:** piano → brass quintet arranger, ensemble templates, part extraction, AI arranging tools, playability report | turn a piano piece into a quintet score with parts |
 | M5b | **Stage (added 2026-11-11):** the parts as players in a 3D concert hall or on a bandstand (A-Frame, loaded on demand); spatial sound heard from the camera; players light up with their notes; range meters; select, solo, mute, set the volume, move players or change their instrument; VR; tooltips on every button | hear an arrangement from the podium or the balcony, see who carries the tune, and spot parts that sit too high |
-| M6 | **Polish:** better playback (sound fonts), offline/PWA polish, MuseScore engraving option, Audiveris if the benchmark justifies it, more ensembles | — |
+| M5c | **Practice, sound and two readings (added 2026-11-17):** recorded instruments; metronome, count-in, loops and speed trainer; audio and play-along export; two recognition readings combined line by line, their disagreements listed, and recognition measured against the corrected score | practise a passage slowly and speed it up, take home a play-along without your part, and check the bars the engines disagree on first |
+| M6 | **Polish:** offline/PWA polish, MuseScore engraving option, Audiveris if the benchmark justifies it, more ensembles | — |
 
 **Progress:** M0–M5 are done and covered by unit tests, round trips over the music21 corpus of public-domain scores and end-to-end browser tests against a stand-in for `gateway.py`. Two details were settled during implementation:
 

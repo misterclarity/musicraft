@@ -13,3 +13,9 @@
     Referrer-Policy = "no-referrer"
     Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
     X-Frame-Options = "DENY"
+
+# The recorded instrument notes rarely change: keep them for a week.
+[[headers]]
+  for = "/samples/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

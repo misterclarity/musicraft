@@ -16,8 +16,12 @@ const OMR_RESULT = readFileSync(new URL("../../../packages/score-core/test/fixtu
   "<work-title>(d=112)</work-title>",
 );
 // Asked for a second reading, the stand-in's first reading misses the rest at the end of bar 1, so
-// the second one, which has every bar right, is the better one.
-const FIRST_OF_TWO = OMR_RESULT.replace("<note><rest/><duration>12</duration><type>quarter</type></note>", "");
+// the second one, which has every bar right, is the better one. It also reads the A flat in bar 3
+// as a B flat: the two readings disagree there.
+const FIRST_OF_TWO = OMR_RESULT.replace("<note><rest/><duration>12</duration><type>quarter</type></note>", "").replace(
+  "<step>A</step><alter>-1</alter><octave>5</octave></pitch><duration>12</duration>",
+  "<step>B</step><alter>-1</alter><octave>5</octave></pitch><duration>12</duration>",
+);
 
 // ---------------------------------------------------------------------------
 // A generated page image (white, with staff lines) for the stand-in recognition service.

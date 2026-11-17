@@ -47,6 +47,7 @@ import { BarDialogs, type BarDialog } from "./BarDialogs";
 import { EditToolbar } from "./EditToolbar";
 import { ExportMenu } from "./ExportMenu";
 import { HistoryPanel } from "./HistoryPanel";
+import { DisagreementsPanel } from "./DisagreementsPanel";
 import { IssuesPanel } from "./IssuesPanel";
 import { OriginalPages } from "./OriginalPages";
 import { PartsPanel } from "./PartsPanel";
@@ -346,6 +347,17 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                 </Tip>
               )}
               {pages.length > 0 && (
+                <DisagreementsPanel
+                  score={score}
+                  pages={pages}
+                  onApply={(next, label) => apply(next, label)}
+                  onShow={(m) => {
+                    project.select({ eventIds: [], measures: { from: m, to: m } });
+                    setFocus(m);
+                  }}
+                />
+              )}
+              {pages.length > 0 && (
                 <RestRunsPanel
                   score={score}
                   onApply={(next, label) => apply(next, label)}
@@ -360,6 +372,8 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
             <Tabs.Panel value="history">
               <HistoryPanel
                 projectId={projectId}
+                score={score}
+                pages={pages}
                 tick={project.versionsTick}
                 onRestore={(restored, label) => apply(restored, label, true)}
                 onSave={(label) => project.saveVersion(label)}

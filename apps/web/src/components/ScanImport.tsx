@@ -41,12 +41,12 @@ import {
   IconRotateClockwise,
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PageRecord } from "../lib/db";
+import type { PageRecognition, PageRecord } from "../lib/db";
 import { baseName, detectKind, downloadText, safeFileName } from "../lib/files";
 import { deleteJob, detectCorners, getJob, getPageImage, startJob, type Corners, type OmrJob } from "../lib/omr";
 import { openPdf } from "../lib/pdfPages";
 import { createProject } from "../lib/projects";
-import { chooseReading, type Reading } from "../lib/readings";
+import { readPage, type Reading } from "../lib/readings";
 import { detectOmr, type OmrEngineInfo } from "../lib/server";
 import { getSettings, isServerConfigured } from "../lib/settings";
 import { CornerEditor } from "./CornerEditor";
@@ -233,7 +233,14 @@ export function ScanImport({
 
   async function buildResult(done: OmrJob): Promise<Result> {
     const scores: Score[] = [];
-    const layouts: { page: number; staffs: OmrJob["pages"][number]["staffs"]; systemStarts: number[]; notePositions: Record<string, { x: number; y: number }>; staves: number }[] = [];
+    const layouts: {
+      page: number;
+      staffs: OmrJob["pages"][number]["staffs"];
+      systemStarts: number[];
+      notePositions: Record<string, { x: number; y: number }>;
+      staves: number;
+      recognition?: PageRecognition;
+    }[] = [];
     const failed: Result["failed"] = [];
     const warnings = new Set<string>();
     const raw: Result["raw"] = [];
@@ -251,7 +258,7 @@ export function ScanImport({
         raw.push({ name: candidates.length > 1 && reading.readBy ? `${name} (${reading.readBy})` : name, musicxml: reading.musicxml });
       }
       try {
-        const { reading, imported, note } = chooseReading(candidates, instrument, name);
+        const { imported, staffs, lineEngines, disagreements, note } = readPage(candidates, instrument, name);
         if (note) readings.push(note);
         imported.warnings.filter((w) => !w.includes("4/4")).forEach((w) => warnings.add(w));
         if (imported.warnings.some((w) => w.includes("4/4")) && page.index === done.pages[0]?.index) {
@@ -260,11 +267,12 @@ export function ScanImport({
         scores.push(imported.score);
         layouts.push({
           page: page.index,
-          staffs: reading.staffs,
+          staffs,
           systemStarts: imported.systemStarts,
           notePositions: imported.imagePositions,
           // homr reports either one box per staff or one per system (grand staff): use the ratio.
-          staves: Math.max(1, Math.round(reading.staffs.length / Math.max(1, imported.systemStarts.length))),
+          staves: Math.max(1, Math.round(staffs.length / Math.max(1, imported.systemStarts.length))),
+          ...(candidates.length > 1 ? { recognition: { lineEngines, disagreements } } : {}),
         });
       } catch (e) {
         failed.push({ index: page.index, error: (e as Error).message });
@@ -300,6 +308,7 @@ export function ScanImport({
             .filter((id): id is string => !!id),
           notePositions: layout.notePositions,
         },
+        ...(layout.recognition ? { recognition: layout.recognition } : {}),
       });
     }
     return {

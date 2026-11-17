@@ -1,7 +1,7 @@
 import { Button, Checkbox, Group, Menu, Modal, Progress, SegmentedControl, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { prettyName, type Score } from "@musicraft/score-core";
-import { IconChevronDown, IconDownload, IconFileTypePdf, IconMusic, IconPackage, IconPrinter } from "@tabler/icons-react";
+import { IconChevronDown, IconDownload, IconFileTypePdf, IconMusic, IconPackage, IconPrinter, IconWaveSine } from "@tabler/icons-react";
 import { useState } from "react";
 import {
   downloadMei,
@@ -17,6 +17,7 @@ import {
 import { downloadBlob, safeFileName } from "../lib/files";
 import { exportProjectFile } from "../lib/projects";
 import type { PageSize } from "../render/renderer";
+import { AudioExportModal } from "./AudioExportModal";
 import { Tip } from "./Tip";
 import { unavailable } from "./unavailable";
 
@@ -24,6 +25,7 @@ type PdfMode = "score" | "parts" | "print";
 
 export function ExportMenu({ score, name, projectId }: { score: Score; name: string; projectId: string }) {
   const [pdfMode, setPdfMode] = useState<PdfMode | null>(null);
+  const [audio, setAudio] = useState(false);
   const safe = (fn: () => unknown) => async () => {
     try {
       await fn();
@@ -35,7 +37,7 @@ export function ExportMenu({ score, name, projectId }: { score: Score; name: str
     <>
       <Menu position="bottom-end" withinPortal>
         <Menu.Target>
-          <Tip label="Save or print the music: PDF of the score or parts, MusicXML for other notation programs, MIDI, MEI, or a project file with everything">
+          <Tip label="Save or print the music: PDF of the score or parts, an audio file (also a play-along without your part), MusicXML for other notation programs, MIDI, MEI, or a project file with everything">
             <Button size="xs" variant="default" leftSection={<IconDownload size={14} />} rightSection={<IconChevronDown size={12} />}>
               Export
             </Button>
@@ -68,6 +70,9 @@ export function ExportMenu({ score, name, projectId }: { score: Score; name: str
           <Menu.Item leftSection={<IconMusic size={14} />} onClick={safe(() => downloadMei(score, name))}>
             MEI (.mei)
           </Menu.Item>
+          <Menu.Item leftSection={<IconWaveSine size={14} />} onClick={() => setAudio(true)}>
+            Audio or play-along (.wav)…
+          </Menu.Item>
           <Menu.Divider />
           <Menu.Item
             leftSection={<IconPackage size={14} />}
@@ -78,6 +83,7 @@ export function ExportMenu({ score, name, projectId }: { score: Score; name: str
         </Menu.Dropdown>
       </Menu>
       {pdfMode && <PdfModal mode={pdfMode} onClose={() => setPdfMode(null)} score={score} name={name} />}
+      {audio && <AudioExportModal score={score} name={name} onClose={() => setAudio(false)} />}
     </>
   );
 }

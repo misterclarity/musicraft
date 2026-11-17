@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Score } from "@musicraft/score-core";
+import type { PartMeasure, Score } from "@musicraft/score-core";
 
 export type ProjectSource = "musicxml" | "scan" | "new" | "project-file";
 export type VersionAuthor = "you" | "ai" | "import" | "recognition";
@@ -43,6 +43,26 @@ export interface PageRecord {
   height: number;
   /** Staff boxes (normalised 0–1) and note positions reported by the recognition service. */
   layout?: PageLayout;
+  /** When two engines read the page: who read each line, and where they disagree. */
+  recognition?: PageRecognition;
+}
+
+export interface PageRecognition {
+  /** The engine that read each line (in the order of layout.systemStartIds). */
+  lineEngines: (string | null)[];
+  /** Bars the other engine read differently. */
+  disagreements: ReadingDisagreement[];
+}
+
+export interface ReadingDisagreement {
+  /** The bar, by id (it keeps it through edits). */
+  measureId: string;
+  /** Other pitches, the same melody in another rhythm, or no such bar in the other reading. */
+  kind: "pitch" | "rhythm" | "missing";
+  /** The engine of the other reading. */
+  readBy: string | null;
+  /** The other reading's version of the bar (one part), when it has one. */
+  bar?: PartMeasure;
 }
 
 export interface PageLayout {

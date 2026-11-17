@@ -21,13 +21,20 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
 1. **Open music.** Drop a MusicXML/MXL file, a PDF or phone photos on the start page, or start a new
    score. Photos and PDFs go through a short wizard: check the pages (corners are detected and
    straightened), say which instrument the music is written for, and the recognition service on your
-   server reads them (with two versions of homr, if the server has both, keeping the better reading of
-   each page). Musicraft then corrects what the music itself gives away and lists it before you
+   server reads them. If the server has two versions of homr, each page is read by both: where both
+   found the same lines of music, each line comes from the reading in which its bars add up best
+   (a missed key signature is taken from the other reading); otherwise the better reading of the page
+   is kept. Musicraft then corrects what the music itself gives away and lists it before you
    open the score: a misread time signature (e.g. 12/8 read as 2/2, when the bars add up to 12/8), a
    bass clef read in a part for an instrument that never uses one, a tempo mark taken for the title.
    The reading before these corrections stays in the History tab. The original pages stay next to
    the score so you can compare bar by bar.
 2. **Check it.** The Checks tab lists bars that don't add up and notes outside an instrument's range.
+   When two engines read the pages, it starts with *Where the two readings differ*: the bars in
+   which they found other notes, the places to compare with the original first. Click one to see it
+   next to the original; *Use* puts in the other engine's version (undo takes it out). Once you
+   have corrected a scan, *How well was the scan read?* in the History tab counts how many of its
+   notes were right, overall and for each engine, to copy into a bug report.
    For scanned parts it also lists the rests: recognition reads a multi-bar rest (one bar with a number
    above it) as a single bar, so click each rest to see it on the original and type in how many bars it
    lasts (or use **Bar → Multi-bar rest…**). Rests are listed as they are printed: a rehearsal mark,
@@ -63,8 +70,17 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
      volume or instrument, or jump to it in the score. Turn on *Move players* to drag players to other
      seats; their sound moves with them (and the score view's stereo follows the seating too).
    - It works in a VR headset as well (the goggles button).
-5. **Export** PDF (score or parts), MusicXML (written or concert pitch), MXL, MIDI or MEI. Every change
-   can be undone, and the History tab keeps versions.
+
+   Playback uses recorded instruments (downloaded the first time an instrument plays, about half a
+   megabyte each); the speaker menu in the header switches to a simple synthesizer instead.
+5. **Practise.** The metronome button in the header opens the practice tools: a click on every beat
+   (louder on the first of the bar, dotted quarters in 6/8 and 12/8), a count-in (before a pickup,
+   just the beats that lead to it), a loop of the selected bars, and a speed trainer that starts the
+   loop slower and plays it a little faster each time round (from, step and target are yours to set).
+6. **Export** PDF (score or parts), MusicXML (written or concert pitch), MXL, MIDI, MEI or audio.
+   The audio file (WAV) can be every part, a play-along without the part you play yourself, or the
+   parts you choose, at any speed, with a count-in and a metronome if you like. Every change can be
+   undone, and the History tab keeps versions.
 
 Every button explains itself in a tooltip when you point at it, including why it can't be used yet
 (for example, "Select a note or rest first").
@@ -103,6 +119,12 @@ uv run pytest
 MUSICRAFT_OMR_ENGINE=fake uv run musicraft-omr   # service with a stand-in engine on :8070
 ```
 
+The recorded instruments in `apps/web/public/samples` are rendered from the MuseScore General
+soundfont by `apps/web/scripts/build-samples.py` (needs fluidsynth, ffmpeg and numpy; on Ubuntu
+`apt install fluidsynth musescore-general-soundfont-lossless`). Run it again after adding an
+instrument with a General MIDI program that has no set yet; a unit test checks that every instrument
+in the catalog has one.
+
 ## Deployment
 
 The web app is a set of static files, so any static host works. Scores and your API key stay in the
@@ -137,4 +159,6 @@ Allow the site's origin in `gateway.py`'s CORS settings: `https://<site-name>.ne
 
 ## License
 
-GPL-3.0. The recognition container includes homr (AGPL-3.0).
+GPL-3.0. The recognition container includes homr (AGPL-3.0). The recorded instrument notes come
+from the MuseScore General soundfont (MIT, parts public domain or CC0); see
+[`apps/web/public/samples/LICENSE.txt`](apps/web/public/samples/LICENSE.txt).
