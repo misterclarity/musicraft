@@ -16,7 +16,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure, useHotkeys, useMediaQuery } from "@mantine/hooks";
-import { checkScore, type Issue, type Score } from "@musicraft/score-core";
+import { checkScore, getInstrument, locate, type Issue, type Score } from "@musicraft/score-core";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -34,7 +34,8 @@ import { previewActive, useAssistant } from "../ai/assistant";
 import { changedBars } from "../ai/diff";
 import type { PageRecord } from "../lib/db";
 import { describeSelection } from "../lib/describe";
-import { handleEditorKey } from "../lib/editor";
+import { editor, handleEditorKey } from "../lib/editor";
+import { midiWanted, onMidiChord, useMidi } from "../lib/midi";
 import { addPages, listPages } from "../lib/projects";
 import { ScanImport } from "./ScanImport";
 import { modals } from "../lib/modals";
@@ -172,6 +173,24 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
     ["mod+Y", redo],
     ["Escape", () => project.select(EMPTY_SELECTION)],
   ]);
+
+  // Notes played on a MIDI keyboard go into the score where the selection is, and sound with the
+  // part's instrument (keys are read as the notes are shown: as written, or at concert pitch).
+  useEffect(() => {
+    if (midiWanted() && useMidi.getState().status === "off") void useMidi.getState().connect();
+    return onMidiChord((notes, velocity) => {
+      if (performingRef.current || useStage.getState().view === "stage") return;
+      const { score, selection, concert } = useProject.getState();
+      if (!score) return;
+      const at = selection.eventIds[0] ? locate(score, selection.eventIds[0]) : undefined;
+      const part = score.parts[at?.partIndex ?? 0];
+      if (part) {
+        const shift = concert ? 0 : getInstrument(part.instrument).transposition.chromatic;
+        usePlayback.getState().audition(notes.map((n) => n + shift), velocity, part.id);
+      }
+      editor.midi(notes);
+    });
+  }, []);
 
   // Note entry and editing keys (see the shortcut list in the edit toolbar). On the stage, the
   // letters and arrows walk the camera instead.

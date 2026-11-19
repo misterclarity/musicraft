@@ -6,6 +6,7 @@ import {
   deleteMeasures,
   deleteNotes,
   EditError,
+  enterMidi,
   enterNote,
   insertMeasures,
   locate,
@@ -93,6 +94,17 @@ export const editor = {
       const id = selection.eventIds[0];
       if (!id) throw new EditError("Select a note or rest first.");
       const result = enterNote(score, id, step, { view, inputDuration: useEditor.getState().inputDuration, noteId: selection.noteId });
+      return { score: result.score, select: selectEvent(result.score, result.nextEventId ?? id) };
+    });
+  },
+
+  /** Notes played on a MIDI keyboard: in place of the selected note (or onto the selected rest). */
+  midi(notes: number[]) {
+    const { view } = current();
+    run("Play in notes", (score, selection) => {
+      const id = selection.eventIds[0];
+      if (!id) throw new EditError("Select a note or rest to play into.");
+      const result = enterMidi(score, id, notes, { view, inputDuration: useEditor.getState().inputDuration, noteId: selection.noteId });
       return { score: result.score, select: selectEvent(result.score, result.nextEventId ?? id) };
     });
   },

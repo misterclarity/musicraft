@@ -200,8 +200,7 @@ export class Player {
     return Math.min(segment.to, Math.max(segment.from, segment.from + (now - segment.at)));
   }
 
-  async play(from = 0, options: PlayOptions = {}) {
-    this.stop(false);
+  private ensureSynth(): Synth {
     if (!this.synth) {
       this.synth = new Synth();
       this.synth.useSamples = this.recordedSounds;
@@ -210,7 +209,28 @@ export class Player {
       for (const [id, position] of this.positions) this.synth.setChannelPosition(id, position);
       this.applyMix();
     }
-    const audio = this.synth.context as AudioContext;
+    return this.synth;
+  }
+
+  /** Get the sound going (browsers only allow it in answer to a click or a key). */
+  async wake() {
+    const audio = this.ensureSynth().context as AudioContext;
+    if (audio.state === "suspended") await audio.resume().catch(() => {});
+  }
+
+  /** Sound one note now through a part's channel: a key played on a MIDI keyboard. */
+  async audition(midi: number, velocity: number, partId: string) {
+    const synth = this.ensureSynth();
+    const audio = synth.context as AudioContext;
+    if (audio.state === "suspended") await audio.resume().catch(() => {});
+    if (audio.state !== "running") return;
+    synth.note(audio.currentTime + 0.005, 0.6, midi, velocity, this.sounds.get(partId) ?? { family: "other", program: 0 }, partId);
+  }
+
+  async play(from = 0, options: PlayOptions = {}) {
+    this.stop(false);
+    const synth = this.ensureSynth();
+    const audio = synth.context as AudioContext;
     if (audio.state === "suspended") await audio.resume();
     const performance = this.performance;
     const start = Math.max(0, Math.min(from, performance.duration));
@@ -221,8 +241,8 @@ export class Player {
     let countIn: Click[] = [];
     const bar = performance.measures.findIndex((m) => Math.abs(m.start - start) < 1e-3);
     if (options.countIn && this.score && bar >= 0) countIn = countInClicks(this.score, performance, bar);
-    const at = this.synth.context.currentTime + 0.08 + (countIn.length ? start - countIn[0]!.time : 0);
-    for (const click of countIn) this.synth.click(at + (click.time - start), click.downbeat, this.clickVolume);
+    const at = synth.context.currentTime + 0.08 + (countIn.length ? start - countIn[0]!.time : 0);
+    for (const click of countIn) synth.click(at + (click.time - start), click.downbeat, this.clickVolume);
 
     const to = Math.max(start, Math.min(options.to ?? performance.duration, performance.duration));
     this.segments = [this.segment({ performance, from: start, to }, at, 0, !!options.next)];

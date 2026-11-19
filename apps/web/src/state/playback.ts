@@ -150,6 +150,10 @@ interface PlaybackState {
   setSeats(positions: ReadonlyMap<string, Vec3>): void;
   setSpace(mode: SpaceMode, room: Room): void;
   setListener(position: Vec3, forward: Vec3): void;
+  /** Sound notes played on a MIDI keyboard, with a part's instrument. */
+  audition(midis: number[], velocity: number, partId: string): void;
+  /** Get the sound going, in answer to a click (browsers allow it only then). */
+  wake(): void;
 }
 
 function mixOf(state: Pick<PlaybackState, "muted" | "solo" | "volumes">): Mix {
@@ -329,6 +333,14 @@ export const usePlayback = create<PlaybackState>()((set, get) => ({
 
   setListener(position, forward) {
     player.setListener(position, forward);
+  },
+
+  audition(midis, velocity, partId) {
+    for (const midi of midis) void player.audition(midi, velocity, partId);
+  },
+
+  wake() {
+    void player.wake();
   },
 }));
 

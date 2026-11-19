@@ -6,6 +6,7 @@ import {
   copyMeasures,
   deleteMeasures,
   deleteNotes,
+  enterMidi,
   enterNote,
   expandMultiRest,
   formatPitch,
@@ -82,6 +83,42 @@ describe("entering notes", () => {
     score = addChordNote(score, id, 2);
     score = addChordNote(score, id, 2);
     expect(shownPitch(score, id, "written").map(formatPitch)).toEqual(["C4", "E4", "G4"]);
+  });
+});
+
+describe("playing notes in from a keyboard (MIDI)", () => {
+  it("plays notes onto rests as written, one after another, chords too", () => {
+    let score = trumpet();
+    // Written D5 (MIDI 74) on a Bb trumpet sounds C5; then the next rest is selected.
+    const first = enterMidi(score, events(score)[0]!.id, [74], { inputDuration: { type: "quarter", dots: 0 } });
+    expect(shape(first.score)).toEqual(["C5/quarter", "r/half."]);
+    expect(shownPitch(first.score, events(score)[0]!.id, "written").map(formatPitch)).toEqual(["D5"]);
+    expect(first.nextEventId).toBe(events(first.score)[1]!.id);
+    // Three keys together: a chord, spelled in the written key (C major) with sharps.
+    score = enterMidi(first.score, first.nextEventId!, [67, 64, 61]).score;
+    expect(shownPitch(score, events(score)[1]!.id, "written").map(formatPitch)).toEqual(["C#4", "E4", "G4"]);
+  });
+
+  it("corrects a note's pitch and moves on, keeping its length; one key changes one chord tone", () => {
+    let score = trumpet();
+    const id = events(score)[0]!.id;
+    score = enterNote(score, id, "C", { inputDuration: { type: "half", dots: 0 } }).score;
+    const corrected = enterMidi(score, id, [76]);
+    expect(shownPitch(corrected.score, id, "written").map(formatPitch)).toEqual(["E5"]);
+    expect(shape(corrected.score)[0]).toBe("D5/half");
+    expect(corrected.nextEventId).toBe(events(corrected.score)[1]!.id);
+    score = addChordNote(corrected.score, id, 2);
+    const top = (events(score)[0] as NoteEvent).notes[1]!;
+    score = enterMidi(score, id, [80], { noteId: top.id }).score;
+    expect(shownPitch(score, id, "written").map(formatPitch)).toEqual(["E5", "G#5"]);
+    expect((events(score)[0] as NoteEvent).notes[1]!.id).toBe(top.id);
+  });
+
+  it("takes the keys as concert pitch in the concert view, spelled with flats in flat keys", () => {
+    const score = trumpet();
+    const { score: s1 } = enterMidi(score, events(score)[0]!.id, [70], { view: "concert" });
+    expect(formatPitch((events(s1)[0] as NoteEvent).notes[0]!.pitch)).toBe("Bb4");
+    expect(enterMidi(score, events(score)[0]!.id, []).score).toBe(score);
   });
 });
 

@@ -285,6 +285,54 @@ export function enterNote(
   return { score: next, nextEventId: event.kind === "rest" ? nextEventId(next, eventId) : undefined };
 }
 
+/**
+ * Put notes played on a keyboard (MIDI numbers) in place of an event. The keys are the pitches as
+ * shown in `view`: as written for a transposing part (play what is printed), or at concert pitch,
+ * spelled for the key. On a note its pitches change (one key on a selected chord tone changes that
+ * tone only); on a rest notes of the input length go in, as when typing letters. Either way the next
+ * event is selected next, to play on through a passage.
+ */
+export function enterMidi(
+  score: Score,
+  eventId: Id,
+  midis: number[],
+  options: { view?: PitchView; inputDuration?: Duration; noteId?: Id } = {},
+): EntryResult {
+  const keys = [...new Set(midis)].sort((a, b) => a - b);
+  if (!keys.length) return { score };
+  const at = must(score, eventId);
+  const ctx = viewContext(score, at.partIndex, at.measureIndex, options.view ?? "written");
+  const pitches = keys.map((midi) => fromView(spellMidi(midi, ctx.key.fifths, ctx.key.fifths < 0 ? "flat" : "sharp"), ctx));
+  const event = score.parts[at.partIndex]!.measures[at.measureIndex]!.voices[at.voiceIndex]!.events[at.eventIndex]!;
+  const length = measureLengths(score)[at.measureIndex]!;
+  let next = produce(score, (draft) => {
+    const voice = draft.parts[at.partIndex]!.measures[at.measureIndex]!.voices[at.voiceIndex]!;
+    const ev = voice.events[at.eventIndex]!;
+    if (ev.kind === "note") {
+      const tone = ev.notes.findIndex((n) => n.id === options.noteId);
+      if (pitches.length === 1 && ev.notes.length > 1 && tone >= 0) ev.notes[tone] = { id: ev.notes[tone]!.id, pitch: pitches[0]! };
+      // The chord becomes what was played (the notes keep their ids where they can; ties go).
+      else ev.notes = pitches.map((pitch, i) => ({ id: ev.notes[i]?.id ?? newId("n"), pitch }));
+      ev.notes.sort((a, b) => midiNumber(a.pitch) - midiNumber(b.pitch));
+      return;
+    }
+    const notes = pitches.map((pitch) => ({ id: newId("n"), pitch }));
+    if (ev.measureRest) {
+      let duration = options.inputDuration ?? { type: "quarter", dots: 0 };
+      if (gt(durationValue(duration), length)) duration = splitValue(length)[0]!;
+      voice.events.splice(at.eventIndex, 1, { kind: "note", id: ev.id, duration, notes }, ...fillRests(sub(length, durationValue(duration))));
+      return;
+    }
+    voice.events[at.eventIndex] = { kind: "note", id: ev.id, duration: ev.duration, notes };
+  });
+  // Played onto a rest, a note takes the chosen input length, as typed notes do.
+  if (event.kind === "rest" && !event.measureRest && options.inputDuration) {
+    const same = options.inputDuration.type === event.duration.type && options.inputDuration.dots === event.duration.dots && !event.duration.tuplet;
+    if (!same) next = setDuration(next, eventId, options.inputDuration);
+  }
+  return { score: next, nextEventId: nextEventId(next, eventId) };
+}
+
 export interface PitchMove {
   /** Chromatic steps; spelled for the key that is shown. */
   semitones?: number;

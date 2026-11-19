@@ -118,6 +118,43 @@ test("tool errors go back to the model and leave the score alone", async ({ page
   await expect(page.getByTestId("assistant-preview")).toHaveCount(0);
 });
 
+test("corrects notes by playing them on a MIDI keyboard", async ({ page }) => {
+  // A stand-in for a USB keyboard: the test presses its keys.
+  await page.addInitScript(() => {
+    const input = { name: "Test keyboard", state: "connected", onmidimessage: null as null | ((e: { data: Uint8Array }) => void) };
+    const access = { inputs: new Map([["1", input]]), outputs: new Map(), onstatechange: null, sysexEnabled: false };
+    Object.defineProperty(navigator, "requestMIDIAccess", { value: async () => access });
+    (window as unknown as { playKeys: (keys: number[]) => void }).playKeys = (keys) => keys.forEach((key) => input.onmidimessage?.({ data: new Uint8Array([0x90, key, 100]) }));
+  });
+  await importFile(page, "trumpet-part.musicxml");
+  // Play keys, then wait for them to go in (the selection moves on to the next note).
+  const play = async (keys: number[]) => {
+    const before = await status(page).textContent();
+    await page.evaluate((k) => (window as unknown as { playKeys: (keys: number[]) => void }).playKeys(k), keys);
+    await expect(status(page)).not.toHaveText(before ?? "");
+  };
+  await page.getByTestId("midi").click();
+  await expect(page.getByTestId("midi")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("midi").hover();
+  await expect(page.getByRole("tooltip")).toContainText("MIDI keyboard connected (Test keyboard)");
+  const first = page.locator(".score-page g.note").first();
+  const box = (await first.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(status(page)).toContainText("bar 1");
+  // Written E5 on the B♭ trumpet (it sounds D5); the next note is selected, to play on.
+  await play([76]);
+  await page.keyboard.press("ArrowLeft");
+  await expect(status(page)).toContainText(/E5 \(sounds D5\)/);
+  await page.keyboard.press("ArrowRight");
+  // Three keys together: a chord.
+  await play([72, 76, 79]);
+  await page.keyboard.press("ArrowLeft");
+  await expect(status(page)).toContainText(/C5 E5 G5|C5, E5, G5|C5\+E5\+G5/);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(status(page)).not.toContainText(/E5 \(sounds D5\)/);
+});
+
 test("reads a photo with the recognition service, then proofreads it against the original", async ({ page, request }) => {
   await useMockServer(page);
   const photo = await (await request.get(`${MOCK}/test-page.png`)).body();

@@ -8,11 +8,14 @@ import {
   IconCopy,
   IconHelp,
   IconMusicPlus,
+  IconPiano,
   IconSettings2,
   IconTrash,
 } from "@tabler/icons-react";
 import { useState, type ReactNode } from "react";
 import { DURATIONS, editor, useEditor } from "../lib/editor";
+import { midiSupported, useMidi } from "../lib/midi";
+import { usePlayback } from "../state/playback";
 import type { Selection } from "../state/project";
 import type { BarDialog } from "./BarDialogs";
 import { Tip } from "./Tip";
@@ -81,6 +84,50 @@ function Tool({
         style={{ fontWeight: 700 }}
       >
         {label}
+      </ActionIcon>
+    </Tip>
+  );
+}
+
+/** Connect or disconnect a MIDI keyboard (unavailable, and saying why, where the browser has no MIDI). */
+function MidiButton() {
+  const status = useMidi((s) => s.status);
+  const devices = useMidi((s) => s.devices);
+  if (!midiSupported()) {
+    return (
+      <Tip label="MIDI keyboard: this browser can't use one. Chrome, Edge or Firefox on a computer or an Android device can.">
+        <ActionIcon variant="default" size="lg" {...unavailable(true)} aria-label="MIDI keyboard">
+          <IconPiano size={16} />
+        </ActionIcon>
+      </Tip>
+    );
+  }
+  const on = status === "on";
+  const tip = on
+    ? `MIDI keyboard ${devices.length ? `connected (${devices.join(", ")})` : "on: plug a keyboard in"}. Play a note to put it in place of the selected one (then the next is selected), keys together for a chord, or play notes onto rests one after another. Click to disconnect.`
+    : status === "denied"
+      ? "MIDI keyboard: the browser didn't allow it. Click to ask again, or allow MIDI devices in the site's settings."
+      : "Connect a MIDI keyboard: play the right note to fix a misread one and go on to the next, or play notes onto rests one after another (keys together make a chord). Keys are read as the notes are shown: as written, or at concert pitch.";
+  return (
+    <Tip label={tip}>
+      <ActionIcon
+        variant={on ? "filled" : "default"}
+        size="lg"
+        loading={status === "connecting"}
+        aria-label="MIDI keyboard"
+        aria-pressed={on}
+        data-testid="midi"
+        onClick={() => {
+          if (on) {
+            useMidi.getState().disconnect();
+            return;
+          }
+          // The click lets the browser play the notes as they are played.
+          usePlayback.getState().wake();
+          void useMidi.getState().connect();
+        }}
+      >
+        <IconPiano size={16} />
       </ActionIcon>
     </Tip>
   );
@@ -210,6 +257,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
             <Menu.Item onClick={() => editor.chord(-2)}>Third below</Menu.Item>
           </Menu.Dropdown>
         </Menu>
+        <MidiButton />
         <Divider orientation="vertical" />
         <Menu withinPortal position="bottom" disabled={!hasBars}>
           <Menu.Target>
