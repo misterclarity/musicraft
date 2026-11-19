@@ -47,6 +47,19 @@ describe("screen rendering", () => {
     expect(pages).toHaveLength(1);
   });
 
+  it("starts the engraver when the browser is idle, once", async () => {
+    let created = 0;
+    const renderer = new Renderer(() => {
+      created++;
+      return new FakeWorker() as unknown as Worker;
+    });
+    renderer.warmUp();
+    renderer.warmUp();
+    await vi.waitFor(() => expect(created).toBe(1), { timeout: 5000 });
+    void renderer.renderLatest("screen", "v1", {});
+    expect(created).toBe(1);
+  });
+
   it("keeps other renders (exports) out of the queue", async () => {
     const worker = new FakeWorker();
     const renderer = new Renderer(() => worker as unknown as Worker);

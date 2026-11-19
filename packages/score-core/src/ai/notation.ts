@@ -39,6 +39,9 @@ import { tupletGroups } from "../musicxml/export";
 import { midiNumber as midi, negateInterval, transposePitch, UNISON, type Pitch, type Step } from "../pitch";
 import { writtenContexts, type WrittenContext } from "../transpose";
 
+/** How the assistant names a part: P1, P2… */
+export const partHandle = (index: number) => `P${index + 1}`;
+
 export type PitchFrame = "concert" | "written";
 
 export class McnError extends Error {}

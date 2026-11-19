@@ -42,7 +42,6 @@ import { arrangeSeats, soundPositions } from "../stage/layout";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Tip } from "./Tip";
 import { unavailable } from "./unavailable";
-import { AssistantPanel } from "./AssistantPanel";
 import { BarDialogs, type BarDialog } from "./BarDialogs";
 import { EditToolbar } from "./EditToolbar";
 import { ExportMenu } from "./ExportMenu";
@@ -52,12 +51,14 @@ import { IssuesPanel } from "./IssuesPanel";
 import { OriginalPages } from "./OriginalPages";
 import { PartsPanel } from "./PartsPanel";
 import { PlaybackBar } from "./PlaybackBar";
-import { ProofreadModal } from "./ProofreadModal";
 import { RestRunsPanel } from "./RestRunsPanel";
 import { ScoreView, type MeasureMark } from "./ScoreView";
 
 // The 3D stage (A-Frame and three.js) loads only when it is first opened.
 const StageView = lazy(() => import("../stage/StageView"));
+// The assistant and proofreading (and their music tools) load when first opened.
+const AssistantPanel = lazy(() => import("./AssistantPanel").then((m) => ({ default: m.AssistantPanel })));
+const ProofreadModal = lazy(() => import("./ProofreadModal").then((m) => ({ default: m.ProofreadModal })));
 
 export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: string; onBack: () => void; onOpenSettings: () => void }) {
   const project = useProject();
@@ -70,6 +71,8 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const [mobileView, setMobileView] = useState<"score" | "original">("score");
   const [barDialog, setBarDialog] = useState<BarDialog | null>(null);
   const [proofreadOpen, setProofreadOpen] = useState(false);
+  const [proofreadUsed, setProofreadUsed] = useState(false);
+  if (proofreadOpen && !proofreadUsed) setProofreadUsed(true);
   const [assistantOpen, setAssistantOpen] = useState(() => {
     try {
       return localStorage.getItem("musicraft.assistantOpen") === "1";
@@ -501,18 +504,33 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
         </Group>
       </AppShell.Main>
       <AppShell.Aside>
-        {assistantOpen && <AssistantPanel score={shown} selection={project.selection} pages={pages} onOpenSettings={onOpenSettings} />}
+        {assistantOpen && (
+          <Suspense
+            fallback={
+              <Center h="100%">
+                <Loader />
+              </Center>
+            }
+          >
+            <AssistantPanel score={shown} selection={project.selection} pages={pages} onOpenSettings={onOpenSettings} />
+          </Suspense>
+        )}
       </AppShell.Aside>
-      <ProofreadModal
-        opened={proofreadOpen}
-        onClose={() => setProofreadOpen(false)}
-        pages={pages}
-        onShow={(measureIndex, partId) => {
-          setProofreadOpen(false);
-          project.select({ eventIds: [], measures: { from: measureIndex, to: measureIndex }, partIds: partId ? [partId] : [] });
-          setFocus(measureIndex);
-        }}
-      />
+      {/* Loaded when first opened, then kept: its findings (and a run) outlast closing it. */}
+      {proofreadUsed && (
+        <Suspense fallback={null}>
+          <ProofreadModal
+            opened={proofreadOpen}
+            onClose={() => setProofreadOpen(false)}
+            pages={pages}
+            onShow={(measureIndex, partId) => {
+              setProofreadOpen(false);
+              project.select({ eventIds: [], measures: { from: measureIndex, to: measureIndex }, partIds: partId ? [partId] : [] });
+              setFocus(measureIndex);
+            }}
+          />
+        </Suspense>
+      )}
       <BarDialogs
         dialog={barDialog}
         score={score}

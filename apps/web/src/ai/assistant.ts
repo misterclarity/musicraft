@@ -19,7 +19,8 @@ import type { PageRecord } from "../lib/db";
 import { detectLlm, type LlmCapabilities } from "../lib/server";
 import { getSettings, isServerConfigured, type Settings } from "../lib/settings";
 import { useProject, type Selection } from "../state/project";
-import { AgentError, compactTurn, runAgent, type BrowserTool } from "./agent";
+import type { BrowserTool } from "./agent";
+import { compactTurn } from "./history";
 import type { ChatMessage, ToolCall } from "./llm";
 import { lookAtPageTool } from "./vision";
 
@@ -209,6 +210,8 @@ export const useAssistant = create<AssistantState>()((set, get) => ({
       return current;
     };
     try {
+      // The agent and its music tools (with their argument checks) load the first time they're used.
+      const { runAgent } = await import("./agent");
       const result = await runAgent(
         {
           settings: getSettings(),
@@ -250,7 +253,7 @@ export const useAssistant = create<AssistantState>()((set, get) => ({
       if (!live()) return;
       const aborted = (err as Error).name === "AbortError" || controller.signal.aborted;
       if (aborted) push({ kind: "notice", id: nextId(), text: "Stopped." });
-      else push({ kind: "error", id: nextId(), text: err instanceof AgentError ? err.message : (err as Error).message || String(err) });
+      else push({ kind: "error", id: nextId(), text: (err as Error).message || String(err) });
       set((s) => ({ history: [...s.history, ...compactTurn(request, aborted ? "(stopped by the user)" : "(failed)", [])].slice(-24) }));
     } finally {
       if (live()) {

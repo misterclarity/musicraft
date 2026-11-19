@@ -5,6 +5,7 @@
   "description": "Score model, MusicXML import/export, transposition, checks and arranging for Musicraft.",
   "license": "GPL-3.0-only",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },

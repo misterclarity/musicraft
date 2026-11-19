@@ -105,6 +105,20 @@ export class Renderer {
       });
   }
 
+  /**
+   * Start the engraver (download and compile Verovio) while nothing else is going on, so the first
+   * score opens without waiting for it. Skipped when the browser asks to save data.
+   */
+  warmUp() {
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    if (this.worker || connection?.saveData) return;
+    const start = () => {
+      if (!this.worker) this.ensureWorker();
+    };
+    if ("requestIdleCallback" in window) window.requestIdleCallback(start, { timeout: 4000 });
+    else setTimeout(start, 1500);
+  }
+
   async mei(xml: string): Promise<string> {
     const response = await this.request<{ id: number; mei: string }>({ kind: "mei", xml });
     return response.mei;

@@ -52,7 +52,7 @@ import {
   type Interval,
 } from "../pitch";
 import { changeInstrument, shiftOctaves, transposeScore, writtenKeyToConcert } from "../transpose";
-import { aiBarLabels, barIndex, barsText, McnError, printBars, repairTies, writeBars } from "./notation";
+import { aiBarLabels, barIndex, barsText, McnError, partHandle, printBars, repairTies, writeBars } from "./notation";
 import { describePart, describeScore } from "./overview";
 
 export interface ToolOutcome {
@@ -82,8 +82,6 @@ export class ToolError extends Error {}
 const barArg = z.union([z.number().int(), z.string().min(1)]);
 const partArg = z.union([z.string().min(1), z.number().int()]);
 const pitchArg = z.enum(["concert", "written"]).optional();
-
-export const partHandle = (index: number) => `P${index + 1}`;
 
 /** A part from "P2", "part 2", 2, or (part of) its name. */
 export function resolvePart(score: Score, ref: string | number): number {

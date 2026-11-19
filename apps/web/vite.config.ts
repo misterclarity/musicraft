@@ -32,7 +32,8 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
-    sourcemap: true,
+    // Source maps (about 30 MB) only when asked for: SOURCEMAP=1 npm run build.
+    sourcemap: !!process.env.SOURCEMAP,
     chunkSizeWarningLimit: 12000,
   },
   server: {

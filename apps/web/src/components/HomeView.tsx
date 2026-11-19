@@ -43,6 +43,7 @@ import {
   type ProjectSummary,
 } from "../lib/projects";
 import { isServerConfigured, useSettings } from "../lib/settings";
+import { renderer } from "../render/renderer";
 import { NewScoreModal } from "./NewScoreModal";
 import { Tip } from "./Tip";
 
@@ -61,6 +62,9 @@ export function HomeView({
   const [busy, setBusy] = useState(false);
   const [newOpen, newScore] = useDisclosure(false);
   const [storage, setStorage] = useState<{ usage: number; quota: number; persisted: boolean }>();
+
+  // Get the engraver ready while the user looks at the list.
+  useEffect(() => renderer.warmUp(), []);
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const settings = useSettings();
