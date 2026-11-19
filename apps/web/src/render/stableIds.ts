@@ -14,16 +14,18 @@ export function idsIn(xml: string): Set<string> {
 }
 
 /**
- * Rename the generated ids of one page to `v<page>-<n>`, wherever Verovio writes them: id and href
- * attributes, the classes that tie the pieces of a slur or tie together (`id-…`) or close a system
- * or page (`…MilestoneEnd <id>`), and the page's style rules (`#<id> g.tempo`).
+ * Rename the generated ids of one page to `<prefix><page>-<n>`, wherever Verovio writes them: id and
+ * href attributes, the classes that tie the pieces of a slur or tie together (`id-…`) or close a
+ * system or page (`…MilestoneEnd <id>`), and the page's style rules (`#<id> g.tempo`). Each view
+ * engraving pages at the same time needs its own prefix: a page's symbols are drawn by reference to
+ * its own definitions, and the first element with an id wins.
  */
-export function stableIds(svg: string, page: number, keep: Set<string>): string {
+export function stableIds(svg: string, page: number, keep: Set<string>, prefix = "v"): string {
   const renamed = new Map<string, string>();
   const rename = (id: string) => {
     if (keep.has(id)) return id;
     let name = renamed.get(id);
-    if (!name) renamed.set(id, (name = `v${page}-${renamed.size + 1}`));
+    if (!name) renamed.set(id, (name = `${prefix}${page}-${renamed.size + 1}`));
     return name;
   };
   const renameClasses = (classes: string) => {

@@ -15,12 +15,23 @@ export interface RenderedScore {
  */
 export function useRenderedScore(
   score: Score | null,
-  options: { concert: boolean; widthPx: number; zoom: number; partIds?: Id[]; firstPage?: () => number },
+  options: {
+    concert: boolean;
+    widthPx: number;
+    zoom: number;
+    partIds?: Id[];
+    firstPage?: () => number;
+    /** Verovio's layout instead of the editor's (see screenOptions). */
+    layout?: Record<string, unknown>;
+    /** Gather runs of empty bars into multi-bar rests, as in a printed part. */
+    multiRests?: boolean;
+  },
 ): RenderedScore {
   const [state, setState] = useState<RenderedScore>({ svgs: [], loading: true });
   const slot = `screen-${useId()}`;
-  const { concert, widthPx, zoom, partIds } = options;
+  const { concert, widthPx, zoom, partIds, multiRests = false } = options;
   const partKey = partIds?.join(",") ?? "";
+  const layoutKey = options.layout ? JSON.stringify(options.layout) : "";
   const firstPage = useRef(options.firstPage);
   firstPage.current = options.firstPage;
 
@@ -32,13 +43,13 @@ export function useRenderedScore(
     const timer = setTimeout(() => {
       let xml: string;
       try {
-        xml = exportMusicXml(score, { pitch: concert ? "concert" : "written", partIds: partKey ? partKey.split(",") : undefined });
+        xml = exportMusicXml(score, { pitch: concert ? "concert" : "written", partIds: partKey ? partKey.split(",") : undefined, multiRests });
       } catch (error) {
         setState({ svgs: [], loading: false, error: error instanceof Error ? error.message : String(error) });
         return;
       }
       renderer
-        .renderLatest(slot, xml, screenOptions(widthPx, zoom), {
+        .renderLatest(slot, xml, layoutKey ? (JSON.parse(layoutKey) as Record<string, unknown>) : screenOptions(widthPx, zoom), {
           first: firstPage.current?.() ?? 0,
           onPage: ({ index, svg, count }) => {
             if (cancelled) return;
@@ -64,7 +75,7 @@ export function useRenderedScore(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [score, concert, widthPx, zoom, partKey, slot]);
+  }, [score, concert, widthPx, zoom, partKey, layoutKey, multiRests, slot]);
 
   return state;
 }

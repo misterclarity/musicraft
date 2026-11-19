@@ -39,7 +39,7 @@ describe("screen rendering", () => {
     const renderer = new Renderer(() => worker as unknown as Worker);
     const pages: unknown[] = [];
     const done = renderer.renderLatest("screen", "v1", {}, { first: 2, onPage: (page) => pages.push(page) });
-    expect(worker.posted[0]).toMatchObject({ xml: "v1", first: 2 });
+    expect(worker.posted[0]).toMatchObject({ xml: "v1", first: 2, ids: "s1-" });
     worker.replyAhead(0, 2, "<svg>3</svg>", 4);
     expect(pages).toEqual([{ index: 2, svg: "<svg>3</svg>", count: 4 }]);
     worker.reply(0, ["1", "2", "<svg>3</svg>", "4"]);

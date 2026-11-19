@@ -89,6 +89,72 @@ body {
   outline: 2px dashed rgb(121 80 242 / 60%);
 }
 
+/* Performance mode: the music full screen, page by page */
+.perform-view {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: #fff;
+  overflow: hidden;
+}
+
+.perform-stage {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  color: #000;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+.perform-page {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: #fff;
+}
+
+.perform-page svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.perform-page g.mc-playing {
+  color: var(--mc-playing);
+}
+
+/* Where a half turn cut the page */
+.perform-cut {
+  position: absolute;
+  left: 0;
+  height: 0;
+  border-top: 2px dashed rgb(0 0 0 / 30%);
+  pointer-events: none;
+}
+
+.perform-loading {
+  position: absolute;
+  inset: 0;
+}
+
+.perform-chrome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--mantine-color-body);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 20%);
+  transform: translateY(-110%);
+  transition: transform 0.2s ease;
+}
+
+.perform-chrome-shown {
+  transform: none;
+}
+
 /* Print: only the print root is visible (see export/exports.ts). */
 #print-root {
   display: none;

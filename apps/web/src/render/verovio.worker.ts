@@ -5,8 +5,11 @@ import createVerovioModule from "verovio/wasm";
 import { idsIn, stableIds } from "./stableIds";
 
 export type RenderRequest =
-  /** `first`: the index of the page to engrave and send ahead of the others (the one on screen). */
-  | { id: number; kind: "render"; xml: string; options: Record<string, unknown>; first?: number }
+  /**
+   * `first`: the index of the page to engrave and send ahead of the others (the one on screen).
+   * `ids`: what generated ids start with (each view on screen has its own; see stableIds).
+   */
+  | { id: number; kind: "render"; xml: string; options: Record<string, unknown>; first?: number; ids?: string }
   | { id: number; kind: "mei"; xml: string };
 
 /** A page sent ahead of the rest of the score. */
@@ -59,7 +62,7 @@ scope.onmessage = async (event) => {
     tk.setOptions({ ...BASE_OPTIONS, ...(request.options as VerovioOptions) });
     if (!tk.loadData(request.xml)) throw new Error("The score could not be engraved.");
     const keep = idsIn(request.xml);
-    const engrave = (page: number) => stableIds(tk.renderToSVG(page, false), page, keep);
+    const engrave = (page: number) => stableIds(tk.renderToSVG(page, false), page, keep, request.ids);
     const count = tk.getPageCount();
     const svgs: string[] = new Array<string>(count);
     // The page on screen first: an edit shows before the rest of the score is drawn.

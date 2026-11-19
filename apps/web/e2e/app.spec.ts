@@ -26,6 +26,18 @@ async function importFile(page: Page, name: string) {
 
 const status = (page: Page) => page.getByTestId("status");
 
+/** A long, fast melody for two flutes (the second resting), to fill many pages quickly. */
+function longMelody(bars: number): { name: string; mimeType: string; buffer: Buffer } {
+  const steps = ["C", "D", "E", "F", "G", "A", "B", "C"];
+  const notes = (bar: number) =>
+    [0, 1, 2, 3].map((beat) => `<note><pitch><step>${steps[(bar + beat) % 8]}</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("");
+  const rest = '<note><rest measure="yes"/><duration>4</duration><voice>1</voice></note>';
+  const part = (id: string, music: (bar: number) => string) =>
+    `<part id="${id}">${Array.from({ length: bars }, (_, i) => `<measure number="${i + 1}">${i === 0 ? '<attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>400</per-minute></metronome></direction-type><sound tempo="400"/></direction>' : ""}${music(i)}</measure>`).join("")}</part>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Long Melody</work-title></work><part-list><score-part id="P1"><part-name>Flute 1</part-name></score-part><score-part id="P2"><part-name>Flute 2</part-name></score-part></part-list>${part("P1", notes)}${part("P2", () => rest)}</score-partwise>`;
+  return { name: "long-melody.musicxml", mimeType: "application/xml", buffer: Buffer.from(xml) };
+}
+
 test("imports MusicXML, rewrites the part for trumpet in C and exports it", async ({ page }) => {
   await importFile(page, "trumpet-part.musicxml");
   await page.getByRole("button", { name: /Actions for/ }).first().click();
@@ -355,6 +367,52 @@ test("practises with a count-in, a metronome and a loop that gets faster each ti
   await expect(page.locator("input[aria-label=Tempo]")).toHaveValue("75%");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Stop" }).click();
+});
+
+test("plays from the music full screen, turning pages by key, by tap and by itself", async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.goto("./");
+  await page.getByTestId("file-input").setInputFiles(longMelody(64));
+  await expect(page.locator(".score-page svg").first()).toBeVisible();
+  await page.getByRole("button", { name: "Performance mode" }).click();
+  // The editor underneath is inert; its controls stay out of reach.
+  const perform = page.getByTestId("perform-view");
+  await expect(page.locator(".mantine-AppShell-root")).toHaveAttribute("inert", "");
+  const label = page.getByTestId("perform-page-label");
+  await expect(label).toHaveText(/^Page 1 of (\d+)$/);
+  const pages = Number((await label.textContent())!.match(/of (\d+)/)![1]);
+  expect(pages).toBeGreaterThanOrEqual(3);
+  // Half-page turns: first the top of page 2 above the end of page 1, then page 2.
+  await page.keyboard.press("ArrowRight");
+  await expect(label).toHaveText(`Pages 1–2 of ${pages}`);
+  await expect(page.locator(".perform-cut")).toBeVisible();
+  await page.keyboard.press("PageDown");
+  await expect(label).toHaveText(`Page 2 of ${pages}`);
+  // A tap on the left goes back; whole pages without half turns.
+  await page.mouse.click(100, 600);
+  await expect(label).toHaveText(`Pages 1–2 of ${pages}`);
+  // The controls come back with the mouse (or a tap at the top).
+  await page.mouse.move(400, 300);
+  await expect(page.locator(".perform-chrome-shown")).toBeVisible();
+  await perform.getByRole("switch", { name: "Half-page turns" }).uncheck({ force: true });
+  await page.keyboard.press("ArrowRight");
+  await expect(label).toHaveText(/^Page \d of/);
+  // Played along with, the pages follow the music: from the last page, Home and the next bar bring it back.
+  await page.keyboard.press("End");
+  await expect(label).toHaveText(`Page ${pages} of ${pages}`);
+  await page.mouse.move(400, 320);
+  await perform.getByRole("button", { name: "Play" }).click();
+  await page.keyboard.press("Home");
+  await expect(label).toHaveText(`Page ${pages} of ${pages}`, { timeout: 5000 });
+  await perform.getByRole("button", { name: "Back to the beginning" }).click();
+  await expect(label).toHaveText(`Page 1 of ${pages}`);
+  // One part, as its player reads it: Flute 2 rests throughout, one multi-bar rest on one page.
+  await perform.getByRole("combobox", { name: "What to show" }).click();
+  await page.getByRole("option", { name: "Flute 2" }).click();
+  await expect(label).toHaveText("Page 1 of 1");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("perform-view")).toBeHidden();
+  await expect(page.locator(".score-page svg").first()).toBeVisible();
 });
 
 test("exports the music as an audio file", async ({ page }) => {

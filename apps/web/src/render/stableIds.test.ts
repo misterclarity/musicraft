@@ -28,6 +28,15 @@ describe("stable ids", () => {
     expect(svg).not.toMatch(/l19nj5e9|s1x2y3z|q9w8e7r|p0o9i8u/);
   });
 
+  it("gives each view its own ids, so pages shown at the same time don't borrow each other's symbols", () => {
+    const editor = stableIds(page("l19nj5e9", "s1x2y3z", "q9w8e7r", "p0o9i8u"), 2, keep, "s1-");
+    const stand = stableIds(page("l19nj5e9", "s1x2y3z", "q9w8e7r", "p0o9i8u"), 2, keep, "s2-");
+    expect(editor).toContain('<use href="#s1-2-2"/>');
+    expect(stand).toContain('<use href="#s2-2-2"/>');
+    // The score's own ids stay the same in both.
+    expect(stand).toContain('id="eabcdefghij"');
+  });
+
   it("writes an unchanged page exactly as before, whatever ids Verovio generated this time", () => {
     const before = stableIds(page("l19nj5e9", "s1x2y3z", "q9w8e7r", "p0o9i8u"), 2, keep);
     const after = stableIds(page("k5j4h3g2", "a1b2c3d", "z9y8x7w", "c4v5b6n"), 2, keep);

@@ -7,6 +7,7 @@ import {
   Center,
   Group,
   Loader,
+  Portal,
   ScrollArea,
   SegmentedControl,
   Switch,
@@ -19,6 +20,7 @@ import { checkScore, type Issue, type Score } from "@musicraft/score-core";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
+  IconBook,
   IconChevronLeft,
   IconPhoto,
   IconSparkles,
@@ -26,7 +28,7 @@ import {
   IconZoomIn,
   IconZoomOut,
 } from "@tabler/icons-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifications } from "@mantine/notifications";
 import { previewActive, useAssistant } from "../ai/assistant";
 import { changedBars } from "../ai/diff";
@@ -56,6 +58,7 @@ import { ScoreView, type MeasureMark } from "./ScoreView";
 
 // The 3D stage (A-Frame and three.js) loads only when it is first opened.
 const StageView = lazy(() => import("../stage/StageView"));
+const PerformanceView = lazy(() => import("./PerformanceView").then((m) => ({ default: m.PerformanceView })));
 // The assistant and proofreading (and their music tools) load when first opened.
 const AssistantPanel = lazy(() => import("./AssistantPanel").then((m) => ({ default: m.AssistantPanel })));
 const ProofreadModal = lazy(() => import("./ProofreadModal").then((m) => ({ default: m.ProofreadModal })));
@@ -70,6 +73,9 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const [showOriginal, setShowOriginal] = useState(true);
   const [mobileView, setMobileView] = useState<"score" | "original">("score");
   const [barDialog, setBarDialog] = useState<BarDialog | null>(null);
+  const [performing, setPerforming] = useState(false);
+  const performingRef = useRef(false);
+  performingRef.current = performing;
   const [proofreadOpen, setProofreadOpen] = useState(false);
   const [proofreadUsed, setProofreadUsed] = useState(false);
   if (proofreadOpen && !proofreadUsed) setProofreadUsed(true);
@@ -148,13 +154,14 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
 
   // While the assistant's draft is on screen, undo means "discard the draft".
   const undo = () => {
+    if (performingRef.current) return;
     const ai = useAssistant.getState();
     if (ai.running) return;
     if (ai.draft) ai.discard();
     else project.undo();
   };
   const redo = () => {
-    if (!previewActive()) project.redo();
+    if (!previewActive() && !performingRef.current) project.redo();
   };
   useHotkeys([
     ["mod+Z", undo],
@@ -167,7 +174,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   // letters and arrows walk the camera instead.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (useStage.getState().view === "stage") return;
+      if (useStage.getState().view === "stage" || performingRef.current) return;
       if (!event.defaultPrevented && handleEditorKey(event)) event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
@@ -207,6 +214,8 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
 
   return (
     <AppShell
+      // Under performance mode the editor is out of reach (keys, screen readers).
+      inert={performing}
       header={{ height: 56 }}
       navbar={{ width: 320, breakpoint: "md", collapsed: { mobile: !navOpen } }}
       aside={{ width: 380, breakpoint: "md", collapsed: { desktop: !assistantOpen, mobile: !assistantOpen } }}
@@ -294,6 +303,19 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                 data-testid="assistant-toggle"
               >
                 <IconSparkles size={18} />
+              </ActionIcon>
+            </Tip>
+            <Tip label="Performance mode: the music full screen, page by page, to play from on a tablet or a stand. Turn pages with a tap, the arrow keys or a page-turn pedal.">
+              <ActionIcon
+                variant="subtle"
+                onClick={() => {
+                  // Full screen where the browser can (asked for while handling the click).
+                  document.documentElement.requestFullscreen?.().catch(() => {});
+                  setPerforming(true);
+                }}
+                aria-label="Performance mode"
+              >
+                <IconBook size={18} />
               </ActionIcon>
             </Tip>
             <PlaybackBar score={shown} selection={project.selection} />
@@ -516,6 +538,27 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
           </Suspense>
         )}
       </AppShell.Aside>
+      {performing && (
+        <Portal>
+          <Suspense
+            fallback={
+              <Center className="perform-view">
+                <Loader />
+              </Center>
+            }
+          >
+            <PerformanceView
+              score={shown}
+              concert={project.concert}
+              partId={project.selection.partIds?.[0] ?? (score.parts.length === 1 ? score.parts[0]!.id : null)}
+              onClose={() => {
+                setPerforming(false);
+                if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+              }}
+            />
+          </Suspense>
+        </Portal>
+      )}
       {/* Loaded when first opened, then kept: its findings (and a run) outlast closing it. */}
       {proofreadUsed && (
         <Suspense fallback={null}>

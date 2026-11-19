@@ -20,6 +20,8 @@ export class SupersededError extends Error {
 }
 
 interface Slot {
+  /** What this view's generated ids start with. */
+  ids: string;
   busy: boolean;
   queued?: { xml: string; options: Record<string, unknown>; ahead?: Ahead; resolve: (svgs: string[]) => void; reject: (error: Error) => void };
 }
@@ -67,10 +69,13 @@ export class Renderer {
     });
   }
 
-  /** Engrave every page; with `ahead`, one page is engraved first and handed over early. */
-  async render(xml: string, options: Record<string, unknown>, ahead?: Ahead): Promise<string[]> {
+  /**
+   * Engrave every page; with `ahead`, one page is engraved first and handed over early. `ids` starts
+   * the generated ids (pages shown together need different ones).
+   */
+  async render(xml: string, options: Record<string, unknown>, ahead?: Ahead, ids = "x"): Promise<string[]> {
     const response = await this.request<{ id: number; svgs: string[] }>(
-      { kind: "render", xml, options, ...(ahead ? { first: ahead.first } : {}) },
+      { kind: "render", xml, options, ids, ...(ahead ? { first: ahead.first } : {}) },
       ahead?.onPage,
     );
     return response.svgs;
@@ -83,7 +88,7 @@ export class Renderer {
    */
   renderLatest(key: string, xml: string, options: Record<string, unknown>, ahead?: Ahead): Promise<string[]> {
     let slot = this.slots.get(key);
-    if (!slot) this.slots.set(key, (slot = { busy: false }));
+    if (!slot) this.slots.set(key, (slot = { ids: `s${this.slots.size + 1}-`, busy: false }));
     slot.queued?.reject(new SupersededError());
     const queued = slot;
     return new Promise<string[]>((resolve, reject) => {
@@ -97,7 +102,7 @@ export class Renderer {
     const job = slot.queued;
     slot.queued = undefined;
     slot.busy = true;
-    this.render(job.xml, job.options, job.ahead)
+    this.render(job.xml, job.options, job.ahead, slot.ids)
       .then(job.resolve, job.reject)
       .finally(() => {
         slot.busy = false;
@@ -141,6 +146,25 @@ export function screenOptions(widthPx: number, zoom: number): Record<string, unk
     pageMarginRight: 40,
     pageMarginTop: 40,
     pageMarginBottom: 40,
+    header: "auto",
+  };
+}
+
+/**
+ * Verovio layout for performance mode: pages exactly the size of the screen (or of half of it, two
+ * side by side), with larger notes than the editor's, to read from a stand.
+ */
+export function performanceOptions(widthPx: number, heightPx: number, zoom: number): Record<string, unknown> {
+  const scale = Math.round(44 * zoom);
+  return {
+    scale,
+    pageWidth: Math.max(500, Math.floor((widthPx * 100) / scale)),
+    pageHeight: Math.max(500, Math.floor((heightPx * 100) / scale)),
+    adjustPageHeight: false,
+    pageMarginLeft: 50,
+    pageMarginRight: 50,
+    pageMarginTop: 70,
+    pageMarginBottom: 50,
     header: "auto",
   };
 }
