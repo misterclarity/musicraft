@@ -2,7 +2,8 @@ import { INSTRUMENTS, midiNumber, transposePitch } from "@musicraft/score-core";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { decoderDelay, ENCODER_DELAY, layerFor, nearestNote, onsetOf, type Manifest } from "./samples";
+import { buildPerformance, importMusicXml } from "@musicraft/score-core";
+import { decoderDelay, ENCODER_DELAY, layerFor, nearestNote, onsetOf, recordingFor, wantedNotes, type Manifest, type SampleSet } from "./samples";
 
 // Tests run from apps/web.
 const publicDir = join(process.cwd(), "public/samples/");
@@ -30,6 +31,23 @@ describe("recorded notes", () => {
     expect(decoderDelay(0.0032, 0.0005)).toBe(0);
     expect(decoderDelay(0.0005, 0.0032)).toBe(0);
     expect(decoderDelay(0.0255, 0.0005)).toBe(ENCODER_DELAY);
+  });
+
+  it("asks for the recordings of the notes a score plays: each pitch and loudness of each instrument once", () => {
+    const xml = readFileSync(join(process.cwd(), "../../packages/score-core/test/fixtures/trumpet-part.musicxml"), "utf8");
+    const score = importMusicXml(xml).score;
+    const performance = buildPerformance(score);
+    const wanted = wantedNotes(score, performance.notes);
+    expect(wanted.length).toBeGreaterThan(0);
+    expect(wanted.length).toBeLessThan(performance.notes.length);
+    expect(new Set(wanted.map((n) => n.program))).toEqual(new Set([56]));
+    expect(new Set(wanted.map((n) => `${n.midi} ${n.velocity}`)).size).toBe(wanted.length);
+    expect(wantedNotes(score, performance.notes, new Set())).toEqual([]);
+    // The trumpet's march is marked f: only loud recordings, a few of the eleven.
+    const set: SampleSet = { name: "trumpet", sustains: true, layers: manifest.sets.trumpet!.layers.map((l) => ({ velocity: l.velocity, notes: l.notes.map((n) => ({ midi: n.midi, file: n.file })) })) };
+    const files = new Set(wanted.map((n) => recordingFor(set, n.midi, n.velocity).file));
+    expect([...files].every((f) => f.endsWith("f.mp3"))).toBe(true);
+    expect(files.size).toBeLessThan(8);
   });
 
   it("finds where a recording starts", () => {

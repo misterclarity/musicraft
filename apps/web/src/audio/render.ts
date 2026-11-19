@@ -3,7 +3,7 @@
  * than real time with an OfflineAudioContext. A play-along leaves out the parts you play yourself.
  */
 import { buildPerformance, countInClicks, getInstrument, metronomeClicks, type Score } from "@musicraft/score-core";
-import { loadSounds, programsOf } from "./samples";
+import { loadSounds, wantedNotes } from "./samples";
 import { Synth, type Room, type Vec3 } from "./synth";
 
 export interface RenderOptions {
@@ -41,7 +41,7 @@ export async function renderAudio(score: Score, options: RenderOptions = {}): Pr
   const context = new OfflineAudioContext(2, length, rate);
 
   const recorded = options.recorded ?? true;
-  if (recorded) await loadSounds(programsOf({ ...score, parts: score.parts.filter((p) => included.has(p.id)) }));
+  if (recorded) await loadSounds(wantedNotes(score, performance.notes, included));
   const synth = new Synth(context);
   synth.useSamples = recorded;
   synth.setSpace("stereo", room);

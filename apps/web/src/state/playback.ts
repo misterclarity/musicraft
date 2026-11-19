@@ -6,7 +6,7 @@ import { notifications } from "@mantine/notifications";
 import { buildPerformance, playedRange, type Performance, type PerformanceNote, type Score } from "@musicraft/score-core";
 import { create } from "zustand";
 import { Player, samePlace, type Mix, type Room, type SpaceMode, type Stretch, type Vec3 } from "../audio/player";
-import { loadSounds, programsOf, sampleSet } from "../audio/samples";
+import { loadSounds, soundsReady, wantedNotes } from "../audio/samples";
 
 export interface PlaybackFrame {
   /** Seconds from the start of the performance. */
@@ -74,21 +74,24 @@ function storedRecorded(): boolean {
   }
 }
 
-/** Download the recorded notes of a score's instruments; tell the user (once per play) if some failed. */
-async function prepareSounds(score: Score, tell: boolean): Promise<void> {
-  const programs = programsOf(score);
-  if (programs.every((program) => sampleSet(program))) return;
-  if (tell) usePlayback.setState({ loadingSounds: true });
+/**
+ * Download the recordings a score's notes need, and let go of the ones it no longer needs; tell the
+ * user (once per play) if some failed.
+ */
+async function prepareSounds(score: Score, performance: Performance, tell: boolean): Promise<void> {
+  const notes = wantedNotes(score, performance.notes);
+  const waiting = tell && !soundsReady(notes);
+  if (waiting) usePlayback.setState({ loadingSounds: true });
   try {
-    const failed = await loadSounds(programs);
+    const failed = await loadSounds(notes, { only: true });
     if (failed.length && tell) {
       notifications.show({
         color: "orange",
-        message: "Some instrument sounds couldn't be downloaded, so those parts play with the simple synthesizer.",
+        message: "Some instrument sounds couldn't be downloaded, so those notes play with the simple synthesizer.",
       });
     }
   } finally {
-    if (tell) usePlayback.setState({ loadingSounds: false });
+    if (waiting) usePlayback.setState({ loadingSounds: false });
   }
 }
 
@@ -194,9 +197,9 @@ export const usePlayback = create<PlaybackState>()((set, get) => ({
     const sameScore = get().scoreId === score.id;
     if (!sameScore) player.stop(false);
     loadedScore = score;
-    // Fetch the instruments' recorded notes now, so that playing starts at once.
-    if (get().recorded) void prepareSounds(score, false);
     const performance = perform(score, get().tempo);
+    // Fetch the recordings now, so that playing starts at once.
+    if (get().recorded) void prepareSounds(score, performance, false);
     player.load(score, performance);
     if (sameScore) {
       set({ performance });
@@ -246,7 +249,7 @@ export const usePlayback = create<PlaybackState>()((set, get) => ({
       }
     }
     player.setMetronome(practice.metronome, practice.clickVolume);
-    if (state.recorded) await prepareSounds(loadedScore, true);
+    if (state.recorded) await prepareSounds(loadedScore, performance, true);
     player.setRecordedSounds(get().recorded);
     await player.play(start, { countIn: practice.countIn, ...(range ? { to: range.end, next: nextPass } : {}) });
     set({ playing: true, pass: 0, position: player.position });
@@ -255,7 +258,8 @@ export const usePlayback = create<PlaybackState>()((set, get) => ({
   setRecorded(on) {
     set({ recorded: on });
     player.setRecordedSounds(on);
-    if (on && loadedScore) void prepareSounds(loadedScore, false);
+    const performance = get().performance;
+    if (on && loadedScore && performance) void prepareSounds(loadedScore, performance, false);
     try {
       localStorage.setItem(SOUND_KEY, on ? "recorded" : "simple");
     } catch {

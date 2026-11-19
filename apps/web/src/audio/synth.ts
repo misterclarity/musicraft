@@ -1,5 +1,5 @@
 import type { InstrumentFamily } from "@musicraft/score-core";
-import { layerFor, nearestNote, sampleSet, type SampleSet } from "./samples";
+import { playable, sampleSet, type SampledNote, type SampleSet } from "./samples";
 
 export interface Vec3 {
   x: number;
@@ -138,9 +138,10 @@ export class Synth {
 
   /** Schedule one note. `time` is in AudioContext seconds; `channelId` routes it through that part's channel. */
   note(time: number, duration: number, midi: number, velocity: number, sound: Sound, channelId?: string) {
-    const recorded = this.useSamples ? sampleSet(sound.program) : undefined;
-    if (recorded) {
-      this.recorded(recorded, time, duration, midi, velocity, sound.family, channelId);
+    const set = this.useSamples ? sampleSet(sound.program) : undefined;
+    const sample = set ? playable(set, midi, velocity) : undefined;
+    if (set && sample) {
+      this.recorded(set, sample, time, duration, midi, velocity, sound.family, channelId);
       return;
     }
     const family = sound.family;
@@ -267,9 +268,8 @@ export class Synth {
    * A recorded note: the soft or the loud recording for its dynamic, shifted to its pitch (and in
    * tune), looped while held, and quieter when played softly (and darker, with one recording only).
    */
-  private recorded(set: SampleSet, time: number, duration: number, midi: number, velocity: number, family: InstrumentFamily, channelId?: string) {
+  private recorded(set: SampleSet, sample: SampledNote, time: number, duration: number, midi: number, velocity: number, family: InstrumentFamily, channelId?: string) {
     const ctx = this.context;
-    const sample = nearestNote(layerFor(set.layers, velocity).notes, midi);
     const source = ctx.createBufferSource();
     source.buffer = sample.buffer;
     source.playbackRate.value = 2 ** ((midi - sample.midi - sample.cents / 100) / 12);

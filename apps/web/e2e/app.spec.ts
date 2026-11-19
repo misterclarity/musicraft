@@ -378,9 +378,11 @@ test("exports the music as an audio file", async ({ page }) => {
   let loudest = 0;
   for (let i = 44; i < wav.length; i += 2) loudest = Math.max(loudest, Math.abs(wav.readInt16LE(i)));
   expect(loudest).toBeGreaterThan(3000);
-  // With the trumpet's real recordings, soft and loud.
-  expect(recordings.some((url) => url.endsWith("p.mp3"))).toBe(true);
-  expect(recordings.some((url) => url.endsWith("f.mp3"))).toBe(true);
+  // With the trumpet's real recordings: only the loud ones (the march is marked f), and only those
+  // near the notes it plays.
+  expect(recordings.length).toBeGreaterThan(0);
+  expect(recordings.every((url) => url.endsWith("f.mp3"))).toBe(true);
+  expect(new Set(recordings).size).toBeLessThan(8);
 });
 
 test("explains every control in a tooltip, also when it can't be used yet", async ({ page }) => {

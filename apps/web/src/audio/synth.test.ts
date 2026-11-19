@@ -6,28 +6,27 @@ import { Synth } from "./synth";
 // ten cents sharp, and a piano (program 0) with one recording.
 const soft = { duration: 2.4 } as AudioBuffer;
 const loud = { duration: 2.4 } as AudioBuffer;
+const note = (midi: number, buffer: AudioBuffer, cents = 0, loop = true) => ({
+  midi,
+  file: `${midi}.mp3`,
+  loaded: { midi, buffer, start: 0.001, cents, ...(loop ? { loop: { start: 1.5, end: 2.3 } } : {}) },
+});
 const sets: Record<number, SampleSet> = {
   56: {
     name: "trumpet",
     sustains: true,
     layers: [
-      {
-        velocity: 60,
-        notes: [
-          { midi: 60, buffer: soft, start: 0.001, cents: 0, loop: { start: 1.5, end: 2.3 } },
-          { midi: 63, buffer: soft, start: 0.001, cents: 0, loop: { start: 1.5, end: 2.3 } },
-        ],
-      },
-      {
-        velocity: 105,
-        notes: [
-          { midi: 60, buffer: loud, start: 0.001, cents: 0, loop: { start: 1.5, end: 2.3 } },
-          { midi: 63, buffer: loud, start: 0.001, cents: 10, loop: { start: 1.5, end: 2.3 } },
-        ],
-      },
+      { velocity: 60, notes: [note(60, soft), note(63, soft)] },
+      { velocity: 105, notes: [note(60, loud), note(63, loud, 10)] },
     ],
   },
-  0: { name: "piano", sustains: false, layers: [{ velocity: 80, notes: [{ midi: 60, buffer: soft, start: 0.001, cents: 0 }] }] },
+  0: { name: "piano", sustains: false, layers: [{ velocity: 80, notes: [note(60, soft, 0, false)] }] },
+  // A clarinet whose recordings are not loaded yet, but for one at MIDI 50.
+  71: {
+    name: "clarinet",
+    sustains: true,
+    layers: [{ velocity: 80, notes: [{ midi: 50, file: "50.mp3", loaded: note(50, soft).loaded }, { midi: 62, file: "62.mp3" }, { midi: 74, file: "74.mp3" }] }],
+  },
 };
 vi.mock("./samples", async (original) => ({
   ...(await original<typeof import("./samples")>()),
@@ -88,6 +87,20 @@ describe("synthesizer", () => {
     new Synth(context).note(0, 1, 60, 50, { family: "brass", program: 56 }, "part");
     expect((sources[0] as { buffer: AudioBuffer; playbackRate: { value: number } }).buffer).toBe(soft);
     expect((sources[0] as { playbackRate: { value: number } }).playbackRate.value).toBeCloseTo(1);
+  });
+
+  it("stands in a loaded recording within a fifth while the right one is downloaded, otherwise the simple sound", () => {
+    const { context, sources, oscillators } = fakeContext();
+    const synth = new Synth(context);
+    // The right recording for MIDI 56 is the one at 50 (loaded); for 62 it's at 62 (not loaded): 50 stands in.
+    synth.note(0, 1, 56, 80, { family: "woodwind", program: 71 }, "clarinet");
+    synth.note(0, 1, 57, 80, { family: "woodwind", program: 71 }, "clarinet");
+    expect((sources[1] as { playbackRate: { value: number } }).playbackRate.value).toBeCloseTo(2 ** (7 / 12));
+    expect(sources).toHaveLength(2);
+    // MIDI 74 is more than a fifth from the only loaded recording.
+    synth.note(0, 1, 74, 80, { family: "woodwind", program: 71 }, "clarinet");
+    expect(sources).toHaveLength(2);
+    expect(oscillators.length).toBeGreaterThan(0);
   });
 
   it("lets a piano note die away, and keeps the simple sound when told to or when nothing is recorded", () => {

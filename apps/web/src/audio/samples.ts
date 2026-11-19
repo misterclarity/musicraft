@@ -1,11 +1,12 @@
 /**
- * Recorded instrument notes (see public/samples/LICENSE.txt), loaded only for the instruments a
- * score uses: real recordings (VSCO 2 and VCSL, both public domain) and, where those have no such
- * instrument or note, notes rendered from a soundfont. Each set has a soft and a loud recording of
- * a note every two to four semitones; the synthesizer plays the nearest one of the right dynamic at
- * the right pitch, looping sustained notes for as long as they last.
+ * Recorded instrument notes (see public/samples/LICENSE.txt): real recordings (VSCO 2 and VCSL, both
+ * public domain) and, where those have no such instrument or note, notes rendered from a soundfont.
+ * Each set has a soft and a loud recording of a note every two to four semitones; the synthesizer
+ * plays the nearest one of the right dynamic at the right pitch, looping sustained notes for as long
+ * as they last. Only the recordings a score's notes need are downloaded and decoded (a decoded
+ * recording takes about half a megabyte of memory), and those it no longer needs are let go.
  */
-import { getInstrument, type Score } from "@musicraft/score-core";
+import { getInstrument, type PerformanceNote, type Score } from "@musicraft/score-core";
 
 interface ManifestNote {
   midi: number;
@@ -23,6 +24,7 @@ export interface Manifest {
   sets: Record<string, { program: number; sustains: boolean; sources?: string[]; layers: { velocity: number; notes: ManifestNote[] }[] }>;
 }
 
+/** A decoded recording, ready to play. */
 export interface SampledNote {
   midi: number;
   buffer: AudioBuffer;
@@ -33,11 +35,18 @@ export interface SampledNote {
   loop?: { start: number; end: number };
 }
 
-/** The notes of one dynamic: soft recordings stand for up to mf, loud ones for f and more. */
+/** One recording of a set, as the manifest lists it; `loaded` once it is decoded. */
+export interface Recording {
+  midi: number;
+  file: string;
+  loaded?: SampledNote;
+}
+
+/** The recordings of one dynamic: soft ones stand for up to mf, loud ones for f and more. */
 export interface SampleLayer {
   velocity: number;
   /** Lowest first. */
-  notes: SampledNote[];
+  notes: Recording[];
 }
 
 export interface SampleSet {
@@ -48,17 +57,28 @@ export interface SampleSet {
   layers: SampleLayer[];
 }
 
+/** A note to be played with a recording: its instrument (General MIDI program), pitch and loudness. */
+export interface WantedNote {
+  program: number;
+  midi: number;
+  velocity: number;
+}
+
 const base = () => `${import.meta.env.BASE_URL}samples/`;
 let manifestRequest: Promise<Manifest> | null = null;
-const loading = new Map<string, Promise<SampleSet | null>>();
-const loaded = new Map<number, SampleSet>();
+/** The sets by General MIDI program, once the manifest is in. */
+const sets = new Map<number, SampleSet>();
+/** Where each recording starts and loops, as the manifest says. */
+const listed = new Map<Recording, ManifestNote>();
+/** Recordings being downloaded and decoded. */
+const loading = new Map<Recording, Promise<void>>();
 /** Decoded recordings by file (sets of related instruments share some). */
 const buffers = new Map<string, Promise<AudioBuffer>>();
 let decoder: BaseAudioContext | null = null;
 
-/** The recorded notes for a General MIDI program, once loaded. */
+/** The recordings for a General MIDI program (known once the manifest is in; played once loaded). */
 export function sampleSet(program: number): SampleSet | undefined {
-  return loaded.get(program);
+  return sets.get(program);
 }
 
 /** The layer for a loudness: the one whose velocity is nearest (the louder one when as near). */
@@ -81,6 +101,33 @@ export function nearestNote<T extends { midi: number }>(notes: T[], midi: number
     if (distance < bestDistance || (distance === bestDistance && note.midi > best.midi)) best = note;
   }
   return best;
+}
+
+/** The recording to play a note with: of its dynamic, nearest its pitch (whether loaded or not). */
+export function recordingFor(set: SampleSet, midi: number, velocity: number): Recording {
+  return nearestNote(layerFor(set.layers, velocity).notes, midi);
+}
+
+/** How far a recording may be shifted when the right one isn't loaded (yet). */
+const STAND_IN_RANGE = 7;
+
+/**
+ * The loaded recording that plays a note: the right one, or while that is not loaded, the nearest
+ * loaded one within a fifth (of the same dynamic if possible). None: play the simple sound.
+ */
+export function playable(set: SampleSet, midi: number, velocity: number): SampledNote | undefined {
+  const layer = layerFor(set.layers, velocity);
+  const right = nearestNote(layer.notes, midi).loaded;
+  if (right) return right;
+  for (const layers of [[layer], set.layers.filter((l) => l !== layer)]) {
+    let best: SampledNote | undefined;
+    for (const recording of layers.flatMap((l) => l.notes)) {
+      const loaded = recording.loaded;
+      if (loaded && Math.abs(loaded.midi - midi) <= STAND_IN_RANGE && (!best || Math.abs(loaded.midi - midi) < Math.abs(best.midi - midi))) best = loaded;
+    }
+    if (best) return best;
+  }
+  return undefined;
 }
 
 /**
@@ -138,7 +185,7 @@ export function decoderDelay(found: number, expected: number): number {
   return found - expected > ENCODER_DELAY / 2 ? ENCODER_DELAY : 0;
 }
 
-async function loadNote(note: ManifestNote): Promise<SampledNote> {
+async function decodeNote(note: ManifestNote): Promise<SampledNote> {
   const buffer = await decodeFile(note.file);
   const shift = decoderDelay(onsetOf(buffer.getChannelData(0), buffer.sampleRate), note.onset);
   return {
@@ -150,54 +197,96 @@ async function loadNote(note: ManifestNote): Promise<SampledNote> {
   };
 }
 
-async function loadSet(name: string, entry: Manifest["sets"][string]): Promise<SampleSet> {
-  const layers = await Promise.all(
-    entry.layers.map(async (layer) => ({
-      velocity: layer.velocity,
-      notes: (await Promise.all(layer.notes.map(loadNote))).sort((a, b) => a.midi - b.midi),
-    })),
-  );
-  return { name, sustains: entry.sustains, layers: layers.sort((a, b) => a.velocity - b.velocity) };
+/** The sets of the manifest, without anything loaded yet. */
+function readManifest(manifest: Manifest) {
+  if (sets.size) return;
+  for (const [name, entry] of Object.entries(manifest.sets)) {
+    const layers = entry.layers
+      .map((layer) => ({
+        velocity: layer.velocity,
+        notes: layer.notes
+          .map((note) => {
+            const recording: Recording = { midi: note.midi, file: note.file };
+            listed.set(recording, note);
+            return recording;
+          })
+          .sort((a, b) => a.midi - b.midi),
+      }))
+      .sort((a, b) => a.velocity - b.velocity);
+    sets.set(entry.program, { name, sustains: entry.sustains, layers });
+  }
 }
 
-/** The General MIDI programs a score's instruments play with. */
-export function programsOf(score: Score): number[] {
-  return [...new Set(score.parts.map((p) => getInstrument(p.instrument).midiProgram))];
+/** The notes a performance plays with each part's instrument (each pitch and loudness once). */
+export function wantedNotes(score: Score, notes: readonly PerformanceNote[], partIds?: ReadonlySet<string>): WantedNote[] {
+  const programs = new Map(score.parts.map((p) => [p.id, getInstrument(p.instrument).midiProgram]));
+  const wanted = new Map<string, WantedNote>();
+  for (const note of notes) {
+    const program = programs.get(note.partId);
+    if (program === undefined || (partIds && !partIds.has(note.partId))) continue;
+    wanted.set(`${program} ${note.midi} ${note.velocity}`, { program, midi: note.midi, velocity: note.velocity });
+  }
+  return [...wanted.values()];
+}
+
+function load(recording: Recording): Promise<void> {
+  let request = loading.get(recording);
+  if (!request) {
+    request = decodeNote(listed.get(recording)!).then((note) => {
+      recording.loaded = note;
+    });
+    void request.finally(() => loading.delete(recording)).catch(() => {});
+    loading.set(recording, request);
+  }
+  return request;
+}
+
+/** Let go of every decoded recording except these (and of files no recording plays any more). */
+function keepOnly(needed: ReadonlySet<Recording>) {
+  for (const set of sets.values()) {
+    for (const recording of set.layers.flatMap((l) => l.notes)) if (recording.loaded && !needed.has(recording)) recording.loaded = undefined;
+  }
+  const files = new Set<string>();
+  for (const set of sets.values()) for (const recording of set.layers.flatMap((l) => l.notes)) if (recording.loaded || loading.has(recording)) files.add(recording.file);
+  for (const file of buffers.keys()) if (!files.has(file)) buffers.delete(file);
 }
 
 /**
- * Load the recorded notes of a score's instruments (each set once). Resolves to the instruments
- * that couldn't be loaded (they keep the simple synthesizer's sound).
+ * Download and decode the recordings that play these notes. With `only`, the recordings nothing
+ * else needs are let go (for the score being played: what it doesn't play takes no memory).
+ * Resolves to the sets some of whose recordings couldn't be loaded (those notes keep the simple
+ * synthesizer's sound).
  */
-export async function loadSounds(programs: number[]): Promise<string[]> {
-  let manifest: Manifest;
+export async function loadSounds(notes: readonly WantedNote[], options: { only?: boolean } = {}): Promise<string[]> {
   try {
-    manifest = await loadManifest();
+    readManifest(await loadManifest());
   } catch {
-    return programs.map(String);
+    return [...new Set(notes.map((n) => String(n.program)))];
   }
-  const failed: string[] = [];
+  const needed = new Map<Recording, string>();
+  for (const note of notes) {
+    const set = sets.get(note.program);
+    if (set) needed.set(recordingFor(set, note.midi, note.velocity), set.name);
+  }
+  if (options.only) keepOnly(new Set(needed.keys()));
+  const failed = new Set<string>();
   await Promise.all(
-    programs.map(async (program) => {
-      if (loaded.has(program)) return;
-      const name = Object.keys(manifest.sets).find((key) => manifest.sets[key]!.program === program);
-      if (!name) return;
-      let request = loading.get(name);
-      if (!request) {
-        request = loadSet(name, manifest.sets[name]!).then(
-          (set) => {
-            loaded.set(program, set);
-            return set;
-          },
-          () => {
-            loading.delete(name);
-            return null;
-          },
-        );
-        loading.set(name, request);
-      }
-      if (!(await request)) failed.push(name);
-    }),
+    [...needed].map(([recording, name]) =>
+      recording.loaded
+        ? undefined
+        : load(recording).catch(() => {
+            failed.add(name);
+          }),
+    ),
   );
-  return failed;
+  return [...failed];
+}
+
+/** Whether every recording these notes need is loaded. */
+export function soundsReady(notes: readonly WantedNote[]): boolean {
+  if (!manifestRequest || !sets.size) return false;
+  return notes.every((note) => {
+    const set = sets.get(note.program);
+    return !set || !!recordingFor(set, note.midi, note.velocity).loaded;
+  });
 }
