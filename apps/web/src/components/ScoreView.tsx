@@ -8,7 +8,8 @@ export interface MeasureMark {
   measureIndex: number;
   /** Limit the mark to one part; whole system otherwise. */
   partId?: string;
-  color: "red" | "orange" | "blue" | "green" | "violet";
+  /** Yellow: a bar highlighted in pencil. */
+  color: "red" | "orange" | "blue" | "green" | "violet" | "yellow";
   label?: string;
 }
 
@@ -21,6 +22,8 @@ interface ScoreViewProps {
   marks?: MeasureMark[];
   /** Scroll this bar into view when it changes. */
   focusMeasure?: number | null;
+  /** Draw the players' pencil marks. */
+  pencil?: boolean;
 }
 
 interface Rect {
@@ -82,7 +85,7 @@ function scrollIntoViewIfNeeded(el: Element, container: HTMLElement) {
   }
 }
 
-export function ScoreView({ score, concert, zoom, selection, onSelect, marks = [], focusMeasure }: ScoreViewProps) {
+export function ScoreView({ score, concert, zoom, selection, onSelect, marks = [], focusMeasure, pencil = false }: ScoreViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -132,7 +135,7 @@ export function ScoreView({ score, concert, zoom, selection, onSelect, marks = [
     return best;
   }, []);
 
-  const rendered = useRenderedScore(score, { concert, widthPx: width, zoom, firstPage });
+  const rendered = useRenderedScore(score, { concert, widthPx: width, zoom, firstPage, pencil });
 
   // staff number in the engraving (1-based, across parts) → part and staff.
   const staffMap = useMemo(() => {

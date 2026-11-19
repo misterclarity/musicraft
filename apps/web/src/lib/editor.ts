@@ -7,6 +7,11 @@ import {
   deleteNotes,
   EditError,
   enterMidi,
+  hasPencilMark,
+  nextRehearsalLetter,
+  removePencilMarks,
+  setPencilMark,
+  togglePencilMark,
   enterNote,
   insertMeasures,
   locate,
@@ -25,12 +30,14 @@ import {
   type Dynamic,
   type MeasureClipboard,
   type MusicEvent,
+  type PencilKind,
   type PitchMove,
   type Score,
   type Step,
 } from "@musicraft/score-core";
 import { create } from "zustand";
 import { previewActive } from "../ai/assistant";
+import { modals } from "./modals";
 import { useProject, type Selection } from "../state/project";
 
 /** Editor state that is not part of the score: the length used for typed notes, and copied bars. */
@@ -87,6 +94,33 @@ function selectEvent(score: Score, id: string | undefined): Selection | undefine
   return { eventIds: [id], measures: { from: loc.measureIndex, to: loc.measureIndex }, partIds: [score.parts[loc.partIndex]!.id] };
 }
 
+type PencilPlace = { partId: string; measureId: string; eventId?: string };
+
+/** Where pencil marks go: at the selected notes, or on the selected bars of one part. */
+export function pencilPlaces(score: Score, selection: Selection, on: "note" | "bar"): PencilPlace[] {
+  if (on === "note") {
+    return selection.eventIds.flatMap((id) => {
+      const loc = locate(score, id);
+      return loc ? [{ partId: score.parts[loc.partIndex]!.id, measureId: score.measures[loc.measureIndex]!.id, eventId: id }] : [];
+    });
+  }
+  const located = selection.eventIds[0] ? locate(score, selection.eventIds[0]) : undefined;
+  const range = selection.measures ?? (located ? { from: located.measureIndex, to: located.measureIndex } : undefined);
+  const partId = selection.partIds?.length === 1 ? selection.partIds[0] : located ? score.parts[located.partIndex]!.id : score.parts.length === 1 ? score.parts[0]!.id : undefined;
+  if (!range || !partId) return [];
+  return score.measures.slice(range.from, range.to + 1).map((m) => ({ partId, measureId: m.id }));
+}
+
+const PENCIL_NAMES: Record<PencilKind, string> = {
+  fingering: "fingering",
+  "up-bow": "up-bow",
+  "down-bow": "down-bow",
+  breath: "breath mark",
+  text: "words",
+  rehearsal: "rehearsal letter",
+  highlight: "highlight",
+};
+
 export const editor = {
   enter(step: Step) {
     const { view } = current();
@@ -106,6 +140,43 @@ export const editor = {
       if (!id) throw new EditError("Select a note or rest to play into.");
       const result = enterMidi(score, id, notes, { view, inputDuration: useEditor.getState().inputDuration, noteId: selection.noteId });
       return { score: result.score, select: selectEvent(result.score, result.nextEventId ?? id) };
+    });
+  },
+
+  /** Pencil in (or rub out) a bowing or breath at the selected notes, or a highlight on the selected bars. */
+  pencilToggle(kind: "up-bow" | "down-bow" | "breath" | "highlight") {
+    run(`Pencil: ${PENCIL_NAMES[kind]}`, (score, selection) => {
+      const places = pencilPlaces(score, selection, kind === "highlight" ? "bar" : "note");
+      if (!places.length) throw new EditError(kind === "highlight" ? "Select a bar of one part first." : "Select a note first.");
+      // All on, unless all are on already: then all off.
+      const allOn = places.every((place) => hasPencilMark(score, place.partId, place, kind));
+      return places.reduce((next, place) => (allOn || !hasPencilMark(next, place.partId, place, kind) ? togglePencilMark(next, place.partId, place, kind) : next), score);
+    });
+  },
+
+  /** Pencil in a fingering or words at the selected note, or a rehearsal letter or words on the selected bar. */
+  async pencilText(kind: "fingering" | "text" | "rehearsal", on: "note" | "bar") {
+    const { score, selection } = current();
+    const place = score ? pencilPlaces(score, selection, on)[0] : undefined;
+    if (!score || !place) {
+      notifications.show({ color: "orange", message: on === "note" ? "Select a note first." : "Select a bar of one part first." });
+      return;
+    }
+    const measureIndex = score.measures.findIndex((m) => m.id === place.measureId);
+    const existing = hasPencilMark(score, place.partId, place, kind)?.text;
+    const initial = existing ?? (kind === "rehearsal" ? nextRehearsalLetter(score, place.partId, measureIndex) : "");
+    const title = kind === "fingering" ? "Fingering (e.g. 3, or 1-2)" : kind === "rehearsal" ? "Rehearsal letter" : "Words in pencil";
+    const text = await modals.prompt(title, initial, existing !== undefined ? "Leave it empty to rub it out" : undefined);
+    if (text === null) return;
+    run(`Pencil: ${PENCIL_NAMES[kind]}`, (s) => setPencilMark(s, place.partId, { ...place, kind, text }));
+  },
+
+  /** Rub out every pencil mark at the selected notes (or on the selected bars). */
+  pencilErase() {
+    run("Rub out pencil marks", (score, selection) => {
+      const places = [...pencilPlaces(score, selection, "note"), ...(selection.eventIds.length ? [] : pencilPlaces(score, selection, "bar"))];
+      if (!places.length) throw new EditError("Select the notes or bars to rub out.");
+      return places.reduce((next, place) => removePencilMarks(next, place.partId, place), score);
     });
   },
 

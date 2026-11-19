@@ -155,6 +155,43 @@ test("corrects notes by playing them on a MIDI keyboard", async ({ page }) => {
   await expect(status(page)).not.toContainText(/E5 \(sounds D5\)/);
 });
 
+test("pencils in fingerings, bowings and highlights, shown in grey and left out on request", async ({ page }) => {
+  await importFile(page, "trumpet-part.musicxml");
+  const pencil = async (item: string) => {
+    await page.getByRole("button", { name: "Pencil marks" }).click();
+    await page.getByRole("menuitem", { name: item }).click();
+  };
+  const first = page.locator(".score-page g.note").first();
+  const box = (await first.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await pencil("Fingering…");
+  const prompt = page.getByRole("dialog", { name: "Fingering (e.g. 3, or 1-2)" });
+  await prompt.getByRole("textbox").fill("3");
+  await prompt.getByRole("button", { name: "OK" }).click();
+  await expect(page.locator(".score-page g.fing")).toContainText("3");
+  await expect(page.locator(".score-page g.fing").first()).toHaveCSS("fill", "rgb(124, 131, 140)");
+  await pencil("Up-bow");
+  await expect(page.locator(".score-page g.artic[color='#7c838c']")).toHaveCount(1);
+  // The bar of the selected note, highlighted.
+  await pencil("Highlight the bar");
+  await expect(page.locator(".measure-mark-yellow")).toHaveCount(1);
+  // Hidden and shown again; in performance mode too.
+  await pencil("Show pencil marks");
+  await expect(page.locator(".score-page g.fing")).toHaveCount(0);
+  await expect(page.locator(".measure-mark-yellow")).toHaveCount(0);
+  await pencil("Show pencil marks");
+  await expect(page.locator(".score-page g.fing")).toHaveCount(1);
+  await page.getByRole("button", { name: "Performance mode" }).click();
+  await expect(page.locator(".perform-page g.fing").first()).toBeVisible();
+  await expect(page.locator(".perform-highlight")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  // Rubbed out, and back with undo.
+  await pencil("Rub out the pencil marks here");
+  await expect(page.locator(".score-page g.fing")).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".score-page g.fing")).toHaveCount(1);
+});
+
 test("reads a photo with the recognition service, then proofreads it against the original", async ({ page, request }) => {
   await useMockServer(page);
   const photo = await (await request.get(`${MOCK}/test-page.png`)).body();

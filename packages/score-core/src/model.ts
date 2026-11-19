@@ -5,6 +5,7 @@
  * Pitches are stored at CONCERT (sounding) pitch; written pitch for transposing instruments is
  * derived from the part's instrument. Durations are fractions of a whole note.
  */
+import type { PencilMark } from "./pencil";
 import { durationValue, type Duration, type NoteType } from "./duration";
 import { add, frac, sum, ZERO, type Fraction } from "./fraction";
 import { newId } from "./ids";
@@ -98,6 +99,8 @@ export interface Part {
   clefs: Clef[];
   /** One entry per score measure. */
   measures: PartMeasure[];
+  /** The player's pencil marks (see pencil.ts). */
+  pencil?: PencilMark[];
 }
 
 export interface PartMeasure {

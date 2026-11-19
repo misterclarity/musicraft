@@ -13,6 +13,7 @@ export * from "./midi";
 export * from "./ops";
 export * from "./omr";
 export * from "./combine";
+export * from "./pencil";
 export * from "./readings";
 export * from "./edit";
 export * from "./harmony";

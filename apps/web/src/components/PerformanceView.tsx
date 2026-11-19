@@ -1,5 +1,5 @@
 import { ActionIcon, Center, Group, Loader, Select, Switch, Text } from "@mantine/core";
-import { prettyName, type Score } from "@musicraft/score-core";
+import { pencilMarks, prettyName, type Score } from "@musicraft/score-core";
 import { IconPlayerPause, IconPlayerPlay, IconPlayerSkipBack, IconX, IconZoomIn, IconZoomOut } from "@tabler/icons-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { performSteps, shownPages, stepFor, stepLabel, type PageLines, type PerformView } from "../lib/performance";
@@ -13,6 +13,8 @@ interface Props {
   concert: boolean;
   /** The part to show first (the whole score when null). */
   partId: string | null;
+  /** Draw the players' pencil marks (and highlighted bars). */
+  pencil?: boolean;
   onClose: () => void;
 }
 
@@ -34,15 +36,25 @@ function storedPreferences(): Preferences {
   }
 }
 
-/** Where each page's lines of music are, and where its bars sit (fractions of the page height). */
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Where each page's lines of music are, and where its bars sit (fractions of the page). */
 interface Measured {
   lines: PageLines[];
   /** Bar id → page and height on it. */
   bars: Map<string, { page: number; y: number }>;
+  /** Bar id → the box of each of its staves (by staff number in the engraving). */
+  staves: Map<string, Map<number, Box>>;
 }
 
 function measurePages(layers: HTMLElement[]): Measured {
   const bars = new Map<string, { page: number; y: number }>();
+  const staves = new Map<string, Map<number, Box>>();
   const lines = layers.map((layer, page) => {
     const box = layer.getBoundingClientRect();
     if (!box.height) return { gaps: [] };
@@ -53,11 +65,18 @@ function measurePages(layers: HTMLElement[]): Measured {
       .sort((a, b) => a.top - b.top);
     for (const bar of layer.querySelectorAll("g.measure")) {
       const r = bar.getBoundingClientRect();
-      if (bar.id && !bars.has(bar.id)) bars.set(bar.id, { page, y: fraction((r.top + r.bottom) / 2) });
+      if (!bar.id || bars.has(bar.id)) continue;
+      bars.set(bar.id, { page, y: fraction((r.top + r.bottom) / 2) });
+      const boxes = new Map<number, Box>();
+      for (const staff of bar.querySelectorAll("g.staff[data-n]")) {
+        const s = staff.getBoundingClientRect();
+        boxes.set(Number(staff.getAttribute("data-n")), { x: (s.left - box.left) / box.width, y: fraction(s.top), width: s.width / box.width, height: s.height / box.height });
+      }
+      staves.set(bar.id, boxes);
     }
     return { gaps: systems.slice(1).map((s, i) => fraction((systems[i]!.bottom + s.top) / 2)) };
   });
-  return { lines, bars };
+  return { lines, bars, staves };
 }
 
 /** How a page layer is placed for a view: hidden, whole, cut, or on one side. */
@@ -81,7 +100,7 @@ function layerStyle(view: PerformView | undefined, page: number, twoUp: boolean)
  * tablet or a stand. Pages turn with a tap (right side forward, left side back), a swipe, the arrow
  * or page keys (what page-turn pedals send), and by themselves while the music plays.
  */
-export function PerformanceView({ score, concert, partId: initialPart, onClose }: Props) {
+export function PerformanceView({ score, concert, partId: initialPart, pencil = false, onClose }: Props) {
   const [preferences, setPreferences] = useState(storedPreferences);
   const [part, setPart] = useState<string>(initialPart && score.parts.some((p) => p.id === initialPart) ? initialPart : ALL);
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -121,7 +140,7 @@ export function PerformanceView({ score, concert, partId: initialPart, onClose }
   const pageWidth = twoUp ? Math.floor(size.width / 2) : size.width;
   const layout = useMemo(() => performanceOptions(pageWidth, size.height, preferences.zoom), [pageWidth, size.height, preferences.zoom]);
   const partIds = useMemo(() => (part === ALL ? undefined : [part]), [part]);
-  const rendered = useRenderedScore(score, { concert, widthPx: pageWidth, zoom: preferences.zoom, partIds, layout, multiRests: part !== ALL });
+  const rendered = useRenderedScore(score, { concert, widthPx: pageWidth, zoom: preferences.zoom, partIds, layout, multiRests: part !== ALL, pencil });
   const steps = useMemo(() => (measured ? performSteps(measured.lines, { twoUp, half: preferences.half }) : []), [measured, twoUp, preferences.half]);
   const current = Math.min(index, Math.max(0, steps.length - 1));
   const view = steps[current]?.view;
@@ -287,6 +306,32 @@ export function PerformanceView({ score, concert, partId: initialPart, onClose }
     void playback.play(bars.find((m) => placeOf[m.measureIndex]?.page === reading)?.start);
   };
 
+  // Bars highlighted in pencil: a highlighter's yellow over the staves of the part, on each page.
+  const highlights = useMemo(() => {
+    if (!pencil || !measured) return [];
+    const firstStaff = new Map<string, number>();
+    let next = 1;
+    for (const p of score.parts) {
+      if (part !== ALL && p.id !== part) continue;
+      firstStaff.set(p.id, next);
+      next += p.staves;
+    }
+    return score.parts.flatMap((p) => {
+      const first = firstStaff.get(p.id);
+      if (first === undefined) return [];
+      return pencilMarks(score, p).flatMap((mark) => {
+        const place = measured.bars.get(mark.measureId);
+        const boxes = Array.from({ length: p.staves }, (_, k) => measured.staves.get(mark.measureId)?.get(first + k)).filter((b): b is Box => !!b);
+        if (mark.kind !== "highlight" || !place || !boxes.length) return [];
+        const x = Math.min(...boxes.map((b) => b.x));
+        const y = Math.min(...boxes.map((b) => b.y));
+        const right = Math.max(...boxes.map((b) => b.x + b.width));
+        const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+        return [{ page: place.page, x, y: y - 0.006, width: right - x, height: bottom - y + 0.012 }];
+      });
+    });
+  }, [pencil, measured, score, part]);
+
   const half = view?.kind === "half" ? view : null;
   const parts = [{ value: ALL, label: "Full score" }, ...score.parts.map((p) => ({ value: p.id, label: prettyName(p.name) || p.name }))];
 
@@ -294,7 +339,14 @@ export function PerformanceView({ score, concert, partId: initialPart, onClose }
     <div className="perform-view" data-testid="perform-view" onPointerMove={(e) => e.pointerType === "mouse" && showChrome()}>
       <div className="perform-stage" ref={stageRef} onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
         {rendered.svgs.map((svg, i) => (
-          <div key={i} className="perform-page" style={layerStyle(view, i, twoUp)} dangerouslySetInnerHTML={{ __html: svg }} />
+          <div key={i} className="perform-page" style={layerStyle(view, i, twoUp)}>
+            <div className="perform-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+            {highlights
+              .filter((h) => h.page === i)
+              .map((h, k) => (
+                <div key={k} className="perform-highlight" style={{ left: `${h.x * 100}%`, top: `${h.y * 100}%`, width: `${h.width * 100}%`, height: `${h.height * 100}%` }} />
+              ))}
+          </div>
         ))}
         {half && <div className="perform-cut" style={{ top: `${half.bottomCut * 100}%`, width: twoUp ? "50%" : "100%" }} />}
         {(rendered.loading && !rendered.svgs.length) || !measured ? (

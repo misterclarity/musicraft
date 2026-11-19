@@ -1,4 +1,4 @@
-import { Button, Checkbox, Group, Menu, Modal, Progress, SegmentedControl, Stack, Text } from "@mantine/core";
+import { Button, Checkbox, Group, Menu, Modal, Progress, SegmentedControl, Stack, Switch, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { prettyName, type Score } from "@musicraft/score-core";
 import { IconChevronDown, IconDownload, IconFileTypePdf, IconMusic, IconPackage, IconPrinter, IconWaveSine } from "@tabler/icons-react";
@@ -93,10 +93,12 @@ function PdfModal({ mode, onClose, score, name }: { mode: PdfMode; onClose: () =
   const [staff, setStaff] = useState(mode === "parts" ? "100" : score.parts.length > 3 ? "70" : "85");
   const [pitch, setPitch] = useState<PitchMode>("written");
   const [partIds, setPartIds] = useState<string[]>(score.parts.map((p) => p.id));
+  const [pencil, setPencil] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
+  const pencilled = score.parts.some((p) => p.pencil?.length);
 
   async function run() {
-    const layout = { pageSize, staffSize: Number(staff), pitch };
+    const layout = { pageSize, staffSize: Number(staff), pitch, pencil: pencilled && pencil };
     setProgress(0);
     try {
       const onProgress = (done: number, total: number) => setProgress(Math.round((done / total) * 100));
@@ -170,6 +172,11 @@ function PdfModal({ mode, onClose, score, name }: { mode: PdfMode; onClose: () =
               />
             ))}
           </Stack>
+        )}
+        {pencilled && (
+          <Tip label="The players' pencil marks (fingerings, bowings, breaths, words, letters) in grey; highlighted bars are on screen only">
+            <Switch label="Pencil marks" checked={pencil} onChange={(e) => setPencil(e.currentTarget.checked)} />
+          </Tip>
         )}
         {mode === "print" && (
           <Text size="xs" c="dimmed">

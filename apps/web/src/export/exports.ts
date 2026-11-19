@@ -1,4 +1,4 @@
-import { exportMidi, exportMusicXml, exportMxl, prettyName, type Id, type Score } from "@musicraft/score-core";
+import { exportMidi, exportMusicXml, exportMxl, PENCIL_COLOR, prettyName, type Id, type Score } from "@musicraft/score-core";
 import { downloadBlob, downloadBytes, downloadText, safeFileName } from "../lib/files";
 import { PAGE_MM, printOptions, renderer, type PageSize } from "../render/renderer";
 
@@ -27,7 +27,12 @@ export interface PrintLayout {
   /** Verovio scale: 100 = 7.2 mm staves (parts), 70–85 for full scores. */
   staffSize: number;
   pitch: PitchMode;
+  /** With the players' pencil marks (in grey). */
+  pencil?: boolean;
 }
+
+/** Fingerings are pencil marks only: grey like the others (which carry their colour themselves). */
+const PENCIL_STYLE = `<style type="text/css">g.fing { fill: ${PENCIL_COLOR}; color: ${PENCIL_COLOR}; }</style>`;
 
 /** Engrave printed pages as SVG strings. */
 export async function engravePages(score: Score, layout: PrintLayout, partIds?: Id[]): Promise<string[]> {
@@ -36,8 +41,10 @@ export async function engravePages(score: Score, layout: PrintLayout, partIds?: 
     includeIds: false,
     partIds,
     multiRests: partIds?.length === 1,
+    pencil: !!layout.pencil,
   });
-  return renderer.render(xml, printOptions(layout.pageSize, layout.staffSize));
+  const pages = await renderer.render(xml, printOptions(layout.pageSize, layout.staffSize));
+  return layout.pencil ? pages.map((svg) => svg.replace(/<svg\b[^>]*>/, (open) => open + PENCIL_STYLE)) : pages;
 }
 
 function svgToImage(svg: string, widthPx: number, heightPx: number): Promise<HTMLCanvasElement> {

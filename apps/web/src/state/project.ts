@@ -30,6 +30,8 @@ interface ProjectState {
   selection: Selection;
   concert: boolean;
   zoom: number;
+  /** Show the players' pencil marks on the music. */
+  pencil: boolean;
   /** Bumped when versions are added, so the history panel can refresh. */
   versionsTick: number;
 
@@ -43,10 +45,20 @@ interface ProjectState {
   select(selection: Selection): void;
   setConcert(concert: boolean): void;
   setZoom(zoom: number): void;
+  setPencil(pencil: boolean): void;
   saveVersion(label: string, author?: VersionAuthor): Promise<void>;
 }
 
 const MAX_UNDO = 100;
+const PENCIL_KEY = "musicraft.pencil";
+
+function storedPencil(): boolean {
+  try {
+    return localStorage.getItem(PENCIL_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleSave(id: string, score: Score) {
@@ -66,6 +78,7 @@ export const useProject = create<ProjectState>()((set, get) => ({
   selection: EMPTY_SELECTION,
   concert: false,
   zoom: 1,
+  pencil: storedPencil(),
   versionsTick: 0,
 
   async open(id) {
@@ -149,6 +162,15 @@ export const useProject = create<ProjectState>()((set, get) => ({
 
   setZoom(zoom) {
     set({ zoom: Math.min(2.5, Math.max(0.4, Math.round(zoom * 100) / 100)) });
+  },
+
+  setPencil(pencil) {
+    set({ pencil });
+    try {
+      localStorage.setItem(PENCIL_KEY, pencil ? "on" : "off");
+    } catch {
+      // Not remembered in this browser.
+    }
   },
 
   async saveVersion(label, author = "you") {

@@ -23,6 +23,7 @@ import {
   type TimeSignature,
   type Voice,
 } from "../model";
+import { pencilMarks, PENCIL_COLOR, type PencilMark } from "../pencil";
 import { keyAlterations, UNISON, type Pitch } from "../pitch";
 import { toWrittenPitch, writtenContexts, type WrittenContext } from "../transpose";
 import { escapeXml } from "./dom";
@@ -36,6 +37,8 @@ export interface ExportOptions {
   includeIds?: boolean;
   /** Combine runs of empty bars into multi-bar rests (for printed parts). */
   multiRests?: boolean;
+  /** Write the players' pencil marks too (in grey; see pencil.ts). */
+  pencil?: boolean;
 }
 
 const ACCIDENTAL_NAMES: Record<number, string> = {
@@ -212,6 +215,8 @@ export function computeBeams(events: MusicEvent[], onsets: Fraction[], groupLeng
 class Exporter {
   private out: string[] = [];
   private divisions = 1;
+  /** The pencil marks of the part being written, by note (when they are written at all). */
+  private pencilByEvent = new Map<string, PencilMark[]>();
   private readonly includeIds: boolean;
   private readonly lengths: Fraction[];
   private readonly times: TimeSignature[];
@@ -311,7 +316,20 @@ class Exporter {
     const contexts: WrittenContext[] = written
       ? writtenContexts(this.score, part)
       : concertKeys(this.score).map((key) => ({ key, interval: UNISON }));
-    const multiRests = this.options.multiRests ? this.multiRestRuns(part) : new Map<number, number>();
+    // The part's pencil marks, by bar (a bar's own) and by note.
+    const pencilByBar = new Map<string, PencilMark[]>();
+    const pencilByEvent = new Map<string, PencilMark[]>();
+    if (this.options.pencil) {
+      for (const mark of pencilMarks(this.score, part)) {
+        const map = mark.eventId ? pencilByEvent : pencilByBar;
+        const key = mark.eventId ?? mark.measureId;
+        map.set(key, [...(map.get(key) ?? []), mark]);
+      }
+    }
+    this.pencilByEvent = pencilByEvent;
+    // Words or a letter pencilled on a bar start a new multi-bar rest there, as printed ones do.
+    const pencilled = new Set([...pencilByBar].filter(([, marks]) => marks.some((m) => m.kind === "text" || m.kind === "rehearsal")).map(([id]) => id));
+    const multiRests = this.options.multiRests ? this.multiRestRuns(part, pencilled) : new Map<number, number>();
 
     this.w(`<part id="${part.id}">`);
     this.score.measures.forEach((info, m) => {
@@ -383,6 +401,10 @@ class Exporter {
         }
       }
 
+      for (const mark of pencilByBar.get(info.id) ?? []) {
+        if (mark.kind === "text" || mark.kind === "rehearsal") this.w(pencilDirectionXml(mark, ""));
+      }
+
       this.writeVoices(part, pm, m, contexts[m]!);
 
       // Right barline.
@@ -406,7 +428,7 @@ class Exporter {
   }
 
   /** First bar of each run of empty bars → run length. Runs break wherever something is printed. */
-  private multiRestRuns(part: Part): Map<number, number> {
+  private multiRestRuns(part: Part, marked: ReadonlySet<string> = new Set()): Map<number, number> {
     const runs = new Map<number, number>();
     let start = -1;
     const close = (endExclusive: number) => {
@@ -416,8 +438,9 @@ class Exporter {
     this.score.measures.forEach((info, m) => {
       const pm = part.measures[m];
       const empty = measureIsEmpty(pm) && !pm?.clefChanges?.length && !pm?.directions?.length;
-      // Anything printed at the start of this bar ends the run before it, and no run goes under a volta.
-      if (breaksRestBefore(info) || info.ending || !empty) close(m);
+      // Anything printed (or pencilled) at the start of this bar ends the run before it, and no run
+      // goes under a volta.
+      if (breaksRestBefore(info) || info.ending || marked.has(info.id) || !empty) close(m);
       if (empty && start < 0) start = m;
       // Anything printed at the end of this bar ends the run after it.
       if (breaksRestAfter(info)) close(m + 1);
@@ -525,6 +548,8 @@ class Exporter {
     voice.events.forEach((event, i) => {
       flushMarkers(onsets[i]!, onsets[i]!);
       const value = eventValue(event, length);
+      const pencil = this.pencilByEvent.get(event.id) ?? [];
+      for (const mark of pencil) if (mark.kind === "text") this.w(pencilDirectionXml(mark, staffXml));
       if (event.kind === "rest") {
         const id = this.includeIds ? ` id="${event.id}"` : "";
         const hidden = event.hidden ? ' print-object="no"' : "";
@@ -557,7 +582,7 @@ class Exporter {
             xml += `<beam number="${level + 1}">${value}</beam>`;
           });
         }
-        const notations = this.notationsXml(event, note.tie, k === 0, i, tupletStart, tupletStop, voice.events, beams);
+        const notations = this.notationsXml(event, note.tie, k === 0, i, tupletStart, tupletStop, voice.events, beams) + (k === 0 ? pencilNotationsXml(pencil) : "");
         if (notations) xml += `<notations>${notations}</notations>`;
         this.w(xml + "</note>");
       });
@@ -639,6 +664,30 @@ function clefXml(c: Clef, staff: number, staves: number): string {
   const number = staves > 1 ? ` number="${staff}"` : "";
   const octave = c.octaveChange ? `<clef-octave-change>${c.octaveChange}</clef-octave-change>` : "";
   return `<clef${number}><sign>${c.sign}</sign><line>${c.line}</line>${octave}</clef>`;
+}
+
+/** A pencil mark at the start of a bar or before a note: words or a rehearsal letter, in grey. */
+function pencilDirectionXml(mark: PencilMark, staffXml: string): string {
+  const color = ` color="${PENCIL_COLOR}"`;
+  const type =
+    mark.kind === "rehearsal"
+      ? `<rehearsal${color} enclosure="square">${escapeXml(mark.text ?? "")}</rehearsal>`
+      : `<words${color} font-style="italic">${escapeXml(mark.text ?? "")}</words>`;
+  return `<direction placement="above"><direction-type>${type}</direction-type>${staffXml}</direction>`;
+}
+
+/** Pencil marks on a note: fingering and bowing (technical), a breath after it. */
+function pencilNotationsXml(marks: PencilMark[]): string {
+  const color = ` color="${PENCIL_COLOR}"`;
+  let technical = "";
+  let articulations = "";
+  for (const mark of marks) {
+    if (mark.kind === "fingering" && mark.text) technical += `<fingering placement="above"${color}>${escapeXml(mark.text)}</fingering>`;
+    if (mark.kind === "up-bow") technical += `<up-bow${color}/>`;
+    if (mark.kind === "down-bow") technical += `<down-bow${color}/>`;
+    if (mark.kind === "breath") articulations += `<breath-mark${color}/>`;
+  }
+  return (technical ? `<technical>${technical}</technical>` : "") + (articulations ? `<articulations>${articulations}</articulations>` : "");
 }
 
 function directionXml(d: Direction, staff: number): string {

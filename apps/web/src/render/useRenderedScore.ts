@@ -25,11 +25,13 @@ export function useRenderedScore(
     layout?: Record<string, unknown>;
     /** Gather runs of empty bars into multi-bar rests, as in a printed part. */
     multiRests?: boolean;
+    /** Draw the players' pencil marks. */
+    pencil?: boolean;
   },
 ): RenderedScore {
   const [state, setState] = useState<RenderedScore>({ svgs: [], loading: true });
   const slot = `screen-${useId()}`;
-  const { concert, widthPx, zoom, partIds, multiRests = false } = options;
+  const { concert, widthPx, zoom, partIds, multiRests = false, pencil = false } = options;
   const partKey = partIds?.join(",") ?? "";
   const layoutKey = options.layout ? JSON.stringify(options.layout) : "";
   const firstPage = useRef(options.firstPage);
@@ -43,7 +45,7 @@ export function useRenderedScore(
     const timer = setTimeout(() => {
       let xml: string;
       try {
-        xml = exportMusicXml(score, { pitch: concert ? "concert" : "written", partIds: partKey ? partKey.split(",") : undefined, multiRests });
+        xml = exportMusicXml(score, { pitch: concert ? "concert" : "written", partIds: partKey ? partKey.split(",") : undefined, multiRests, pencil });
       } catch (error) {
         setState({ svgs: [], loading: false, error: error instanceof Error ? error.message : String(error) });
         return;
@@ -75,7 +77,7 @@ export function useRenderedScore(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [score, concert, widthPx, zoom, partKey, layoutKey, multiRests, slot]);
+  }, [score, concert, widthPx, zoom, partKey, layoutKey, multiRests, pencil, slot]);
 
   return state;
 }

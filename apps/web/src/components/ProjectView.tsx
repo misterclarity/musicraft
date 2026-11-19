@@ -16,7 +16,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure, useHotkeys, useMediaQuery } from "@mantine/hooks";
-import { checkScore, getInstrument, locate, type Issue, type Score } from "@musicraft/score-core";
+import { checkScore, getInstrument, locate, pencilMarks, type Issue, type Score } from "@musicraft/score-core";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -64,6 +64,16 @@ const PerformanceView = lazy(() => import("./PerformanceView").then((m) => ({ de
 // The assistant and proofreading (and their music tools) load when first opened.
 const AssistantPanel = lazy(() => import("./AssistantPanel").then((m) => ({ default: m.AssistantPanel })));
 const ProofreadModal = lazy(() => import("./ProofreadModal").then((m) => ({ default: m.ProofreadModal })));
+
+/** The bars highlighted in pencil, as marks on the score (one part each). */
+function pencilHighlights(score: Score): MeasureMark[] {
+  const index = new Map(score.measures.map((m, i) => [m.id, i]));
+  return score.parts.flatMap((part) =>
+    pencilMarks(score, part)
+      .filter((mark) => mark.kind === "highlight")
+      .map((mark): MeasureMark => ({ measureIndex: index.get(mark.measureId)!, partId: part.id, color: "yellow", label: "Highlighted in pencil" })),
+  );
+}
 
 export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: string; onBack: () => void; onOpenSettings: () => void }) {
   const project = useProject();
@@ -135,14 +145,18 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
     () => (assistant.draft && assistant.base ? changedBars(assistant.base, assistant.draft) : null),
     [assistant.draft, assistant.base],
   );
+  // Bars highlighted in pencil, under the checks' marks.
+  const highlights = useMemo<MeasureMark[]>(() => (score && project.pencil ? pencilHighlights(score) : []), [score, project.pencil]);
   const marks = useMemo<MeasureMark[]>(
-    () =>
-      tab === "issues"
+    () => [
+      ...highlights,
+      ...(tab === "issues"
         ? issues
             .filter((i) => i.severity !== "info")
-            .map((i) => ({ measureIndex: i.measureIndex, partId: i.partId, color: i.severity === "error" ? "red" : "orange", label: i.message }))
-        : [],
-    [issues, tab],
+            .map((i): MeasureMark => ({ measureIndex: i.measureIndex, partId: i.partId, color: i.severity === "error" ? "red" : "orange", label: i.message }))
+        : []),
+    ],
+    [issues, tab, highlights],
   );
 
   const apply = useCallback(
@@ -531,6 +545,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                     onSelect={project.select}
                     marks={assistantMarks ?? marks}
                     focusMeasure={focus}
+                    pencil={project.pencil}
                   />
                 </div>
               )}
@@ -573,6 +588,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
             <PerformanceView
               score={shown}
               concert={project.concert}
+              pencil={project.pencil}
               partId={project.selection.partIds?.[0] ?? (score.parts.length === 1 ? score.parts[0]!.id : null)}
               onClose={() => {
                 setPerforming(false);

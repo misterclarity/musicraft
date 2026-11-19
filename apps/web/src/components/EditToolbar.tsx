@@ -4,10 +4,12 @@ import { DYNAMICS, type Articulation } from "@musicraft/score-core";
 import {
   IconArrowBarLeft,
   IconArrowBarRight,
+  IconCheck,
   IconClipboard,
   IconCopy,
   IconHelp,
   IconMusicPlus,
+  IconPencil,
   IconPiano,
   IconSettings2,
   IconTrash,
@@ -16,7 +18,7 @@ import { useState, type ReactNode } from "react";
 import { DURATIONS, editor, useEditor } from "../lib/editor";
 import { midiSupported, useMidi } from "../lib/midi";
 import { usePlayback } from "../state/playback";
-import type { Selection } from "../state/project";
+import { useProject, type Selection } from "../state/project";
 import type { BarDialog } from "./BarDialogs";
 import { Tip } from "./Tip";
 import { unavailable } from "./unavailable";
@@ -86,6 +88,58 @@ function Tool({
         {label}
       </ActionIcon>
     </Tip>
+  );
+}
+
+/** A player's pencil marks: at the selected notes, on the selected bars, rubbed out, shown or not. */
+function PencilMenu({ hasNotes, hasBars }: { hasNotes: boolean; hasBars: boolean }) {
+  const shown = useProject((s) => s.pencil);
+  const onBar = hasBars || hasNotes;
+  return (
+    <Menu withinPortal position="bottom">
+      <Menu.Target>
+        <Tip label="Pencil marks: your own fingerings, bowings, breaths, words, rehearsal letters and highlighted bars, drawn in grey over the music (and in PDFs if you want)">
+          <Button variant="default" size="compact-md" leftSection={<IconPencil size={14} />} aria-label="Pencil marks">
+            Pencil
+          </Button>
+        </Tip>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>At the selected note{hasNotes ? "" : " (select one first)"}</Menu.Label>
+        <Menu.Item disabled={!hasNotes} onClick={() => void editor.pencilText("fingering", "note")}>
+          Fingering…
+        </Menu.Item>
+        <Menu.Item disabled={!hasNotes} onClick={() => editor.pencilToggle("up-bow")}>
+          Up-bow
+        </Menu.Item>
+        <Menu.Item disabled={!hasNotes} onClick={() => editor.pencilToggle("down-bow")}>
+          Down-bow
+        </Menu.Item>
+        <Menu.Item disabled={!hasNotes} onClick={() => editor.pencilToggle("breath")}>
+          Breath mark after it
+        </Menu.Item>
+        <Menu.Item disabled={!hasNotes} onClick={() => void editor.pencilText("text", "note")}>
+          Words at the note…
+        </Menu.Item>
+        <Menu.Label>On the selected bar{onBar ? "" : " (select one first)"}</Menu.Label>
+        <Menu.Item disabled={!onBar} onClick={() => void editor.pencilText("rehearsal", "bar")}>
+          Rehearsal letter…
+        </Menu.Item>
+        <Menu.Item disabled={!onBar} onClick={() => void editor.pencilText("text", "bar")}>
+          Words on the bar…
+        </Menu.Item>
+        <Menu.Item disabled={!onBar} onClick={() => editor.pencilToggle("highlight")}>
+          Highlight the bar
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item disabled={!onBar} color="red" onClick={editor.pencilErase}>
+          Rub out the pencil marks here
+        </Menu.Item>
+        <Menu.Item leftSection={shown ? <IconCheck size={14} /> : <span style={{ width: 14 }} />} onClick={() => useProject.getState().setPencil(!shown)}>
+          Show pencil marks
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }
 
@@ -258,6 +312,7 @@ export function EditToolbar({ selection, onBarDialog }: { selection: Selection; 
           </Menu.Dropdown>
         </Menu>
         <MidiButton />
+        <PencilMenu hasNotes={hasNotes} hasBars={hasBars} />
         <Divider orientation="vertical" />
         <Menu withinPortal position="bottom" disabled={!hasBars}>
           <Menu.Target>
