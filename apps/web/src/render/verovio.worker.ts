@@ -2,13 +2,24 @@
 import type { VerovioOptions } from "verovio";
 import { VerovioToolkit } from "verovio/esm";
 import createVerovioModule from "verovio/wasm";
+import { idsIn, stableIds } from "./stableIds";
 
 export type RenderRequest =
-  | { id: number; kind: "render"; xml: string; options: Record<string, unknown> }
+  /** `first`: the index of the page to engrave and send ahead of the others (the one on screen). */
+  | { id: number; kind: "render"; xml: string; options: Record<string, unknown>; first?: number }
   | { id: number; kind: "mei"; xml: string };
+
+/** A page sent ahead of the rest of the score. */
+export interface PageAhead {
+  index: number;
+  svg: string;
+  /** How many pages the score has now. */
+  count: number;
+}
 
 export type RenderResponse =
   | { id: number; svgs: string[] }
+  | { id: number; ahead: PageAhead }
   | { id: number; mei: string }
   | { id: number; error: string };
 
@@ -47,9 +58,17 @@ scope.onmessage = async (event) => {
     // Layout options must be set before loading so they apply to this score.
     tk.setOptions({ ...BASE_OPTIONS, ...(request.options as VerovioOptions) });
     if (!tk.loadData(request.xml)) throw new Error("The score could not be engraved.");
+    const keep = idsIn(request.xml);
+    const engrave = (page: number) => stableIds(tk.renderToSVG(page, false), page, keep);
     const count = tk.getPageCount();
-    const svgs: string[] = [];
-    for (let page = 1; page <= count; page++) svgs.push(tk.renderToSVG(page, false));
+    const svgs: string[] = new Array<string>(count);
+    // The page on screen first: an edit shows before the rest of the score is drawn.
+    if (request.first !== undefined && count > 1) {
+      const index = Math.min(Math.max(0, request.first), count - 1);
+      svgs[index] = engrave(index + 1);
+      scope.postMessage({ id: request.id, ahead: { index, svg: svgs[index], count } });
+    }
+    for (let page = 1; page <= count; page++) svgs[page - 1] ??= engrave(page);
     scope.postMessage({ id: request.id, svgs });
   } catch (error) {
     scope.postMessage({ id: request.id, error: error instanceof Error ? error.message : String(error) });

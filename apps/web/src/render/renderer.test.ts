@@ -12,6 +12,9 @@ class FakeWorker {
   reply(index: number, svgs: string[]) {
     this.onmessage?.({ data: { id: this.posted[index]!.id, svgs } } as MessageEvent);
   }
+  replyAhead(index: number, page: number, svg: string, count: number) {
+    this.onmessage?.({ data: { id: this.posted[index]!.id, ahead: { index: page, svg, count } } } as MessageEvent);
+  }
 }
 
 describe("screen rendering", () => {
@@ -29,6 +32,19 @@ describe("screen rendering", () => {
     await vi.waitFor(() => expect(worker.posted.map((m) => m.xml)).toEqual(["v1", "v3"]));
     worker.reply(1, ["<svg>v3</svg>"]);
     await expect(third).resolves.toEqual(["<svg>v3</svg>"]);
+  });
+
+  it("hands over the page on screen before the rest of the score", async () => {
+    const worker = new FakeWorker();
+    const renderer = new Renderer(() => worker as unknown as Worker);
+    const pages: unknown[] = [];
+    const done = renderer.renderLatest("screen", "v1", {}, { first: 2, onPage: (page) => pages.push(page) });
+    expect(worker.posted[0]).toMatchObject({ xml: "v1", first: 2 });
+    worker.replyAhead(0, 2, "<svg>3</svg>", 4);
+    expect(pages).toEqual([{ index: 2, svg: "<svg>3</svg>", count: 4 }]);
+    worker.reply(0, ["1", "2", "<svg>3</svg>", "4"]);
+    await expect(done).resolves.toHaveLength(4);
+    expect(pages).toHaveLength(1);
   });
 
   it("keeps other renders (exports) out of the queue", async () => {

@@ -36,6 +36,11 @@ body {
   color: #000;
 }
 
+/* A page still being engraved. */
+.score-page:empty {
+  display: none;
+}
+
 .score-page svg {
   display: block;
   width: 100%;

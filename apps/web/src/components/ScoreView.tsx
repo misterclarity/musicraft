@@ -107,7 +107,32 @@ export function ScoreView({ score, concert, zoom, selection, onSelect, marks = [
     };
   }, []);
 
-  const rendered = useRenderedScore(score, { concert, widthPx: width, zoom });
+  // The page to engrave first after a change: the one holding the selection (what an edit changes),
+  // else the one most on screen.
+  const latest = useRef({ score, selection });
+  latest.current = { score, selection };
+  const firstPage = useCallback(() => {
+    const container = containerRef.current;
+    const pages = pagesRef.current;
+    if (!container || !pages) return 0;
+    const list = Array.from(pages.querySelectorAll(":scope > .score-page"));
+    const { score, selection } = latest.current;
+    const selected = selection.measures?.from ?? (selection.eventIds[0] ? locate(score, selection.eventIds[0])?.measureIndex : undefined);
+    const measureId = selected !== undefined ? score.measures[selected]?.id : undefined;
+    const holder = measureId ? pages.querySelector(`[id="${measureId}"]`)?.closest(".score-page") : null;
+    if (holder && list.includes(holder)) return list.indexOf(holder);
+    const view = container.getBoundingClientRect();
+    let best = 0;
+    let bestHeight = 0;
+    list.forEach((page, i) => {
+      const box = page.getBoundingClientRect();
+      const visible = Math.min(box.bottom, view.bottom) - Math.max(box.top, view.top);
+      if (visible > bestHeight) [best, bestHeight] = [i, visible];
+    });
+    return best;
+  }, []);
+
+  const rendered = useRenderedScore(score, { concert, widthPx: width, zoom, firstPage });
 
   // staff number in the engraving (1-based, across parts) → part and staff.
   const staffMap = useMemo(() => {
