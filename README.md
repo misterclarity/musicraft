@@ -29,6 +29,13 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
    bass clef read in a part for an instrument that never uses one, a tempo mark taken for the title.
    The reading before these corrections stays in the History tab. The original pages stay next to
    the score so you can compare bar by bar.
+
+   Music printed as separate parts (band and orchestra parts) can be put together: open one part,
+   then for each of the others use **Parts → Add a scanned part**. It is read like any scan and joins
+   the score bar by bar; before adding it, the wizard says how it lines up (bars added or left empty,
+   and where time signatures, keys or rehearsal marks, repeats and double bar lines don't match,
+   which points to a bar too many or too few), and its first bar can go to a later bar of the score.
+   Its pages appear next to the score too: a bar selected in that part shows on its own page.
 2. **Check it.** The Checks tab lists bars that don't add up and notes outside an instrument's range.
    When two engines read the pages, it starts with *Where the two readings differ*: the bars in
    which they found other notes, the places to compare with the original first. Click one to see it
@@ -51,6 +58,14 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
    - Edit by hand: click a note or rest and type. `A`–`G` enter notes, `↑`/`↓` move by semitones,
      `2`–`7` set lengths, `.` dots, `+` ties, `Delete` makes a rest; the toolbar does the same by touch,
      and its `?` button lists every shortcut. *Concert pitch* switches between written and sounding pitch.
+   - With a MIDI keyboard (the piano button; Chrome, Edge or Firefox): play the right note to replace
+     the selected one, which also selects the next, so a misread passage is corrected by playing
+     through it; keys pressed together make a chord, and on rests notes go in one after another at the
+     chosen length. Keys are read as the notes are shown: as written for transposing parts, or at
+     concert pitch.
+   - *Pencil* marks are your own, drawn in grey over the printed music: fingerings, up- and down-bows,
+     breath marks and words at a note, rehearsal letters, words and highlighted bars on a bar. They
+     follow their notes through edits, can be hidden or rubbed out, and are an option in PDFs.
    - *Assistant* (✨ in the header): describe the change, e.g. "make this a trumpet in C part and move
      bars 17–24 down an octave". The model works through Musicraft's music tools on a draft; changed
      bars turn green, you can play them back, and you keep or discard the result. Select bars or notes
@@ -74,14 +89,21 @@ The plan and design decisions are in [`docs/PLAN.md`](docs/PLAN.md); server inst
    Playback uses real recordings of the instruments, a soft and a loud one of each note: brass,
    woodwinds, strings and pipe organ from VSCO 2 Community Edition, saxophones and a Steinway grand
    from the Versilian Community Sample Library (both public domain). Cor anglais, guitar and choir,
-   which neither library has, are rendered from the MuseScore General soundfont. Each instrument is
-   downloaded the first time it plays (about half a megabyte, the piano 1.4 MB); the speaker menu
-   in the header switches to a simple synthesizer instead.
+   which neither library has, are rendered from the MuseScore General soundfont. Only the recordings
+   of the notes a score plays are downloaded, while the score opens (a brass quintet takes about
+   19 MB of memory); the speaker menu in the header switches to a simple synthesizer instead.
 5. **Practise.** The metronome button in the header opens the practice tools: a click on every beat
    (louder on the first of the bar, dotted quarters in 6/8 and 12/8), a count-in (before a pickup,
    just the beats that lead to it), a loop of the selected bars, and a speed trainer that starts the
    loop slower and plays it a little faster each time round (from, step and target are yours to set).
-6. **Export** PDF (score or parts), MusicXML (written or concert pitch), MXL, MIDI, MEI or audio.
+
+   To play from the screen, *Performance mode* (the book button) shows the score or one part, with
+   its multi-bar rests, in pages the size of the screen, two side by side on a tablet held sideways.
+   Pages turn with a tap (right side forward, left side back), a swipe, the arrow and page keys
+   (which Bluetooth page-turn pedals send), and by themselves while the music plays. With half-page
+   turns the top of the next page appears above the end of the current one first. The screen stays
+   on while it is open.
+6. **Export** PDF (score or parts, with or without pencil marks), MusicXML (written or concert pitch), MXL, MIDI, MEI or audio.
    The audio file (WAV) can be every part, a play-along without the part you play yourself, or the
    parts you choose, at any speed, with a count-in and a metronome if you like. Every change can be
    undone, and the History tab keeps versions.
@@ -110,7 +132,7 @@ npm install
 npm run dev          # web app on http://localhost:5173
 npm test             # unit tests (score engine and web app)
 npm run typecheck
-npm run build        # production build in apps/web/dist
+npm run build        # production build in apps/web/dist (SOURCEMAP=1 npm run build adds source maps)
 npm run e2e          # browser tests of the build (first time: npx playwright install chromium),
                      # against e2e/mock-server.mjs, a stand-in for gateway.py with llama-server and
                      # the recognition service behind it
@@ -150,13 +172,17 @@ browser; the API key is never part of the build. Two ready-made setups:
 
 1. **Settings → Pages → Build and deployment → Source: GitHub Actions** (once).
 2. Every push to `main` runs `.github/workflows/pages.yml`, which builds the app for
-   `https://<owner>.github.io/<repository>/` and publishes it. You can also start it from the Actions tab.
+   `https://<owner>.github.io/<repository>/` and publishes it. To publish another branch, start the
+   workflow from the Actions tab (**Deploy to GitHub Pages → Run workflow**) and choose the branch;
+   if GitHub refuses it because of the environment's protection rules, add the branch under
+   **Settings → Environments → github-pages → Deployment branches and tags**.
 3. Optional: **Settings → Secrets and variables → Actions → Variables →** `MUSICRAFT_SERVER_URL` with your
    server's address (it ends up in the public site, but it isn't a secret; the key is).
 
 GitHub Pages can't send HTTP headers, so every build also carries the Content-Security-Policy as a
 `<meta>` tag. The only protection missing compared with Netlify is the one against other sites framing
-the app.
+the app. Netlify and Vercel also let browsers keep the built files (whose names change with every
+build) for a year, so returning visits download nothing again.
 
 ### Your server
 
