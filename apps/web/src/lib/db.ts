@@ -45,6 +45,8 @@ export interface PageRecord {
   layout?: PageLayout;
   /** When two engines read the page: who read each line, and where they disagree. */
   recognition?: PageRecognition;
+  /** The part these pages hold alone (scanned from its own printed part); the whole score when absent. */
+  partId?: string;
 }
 
 export interface PageRecognition {

@@ -20,6 +20,8 @@ import {
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import {
+  addScannedPart,
+  aiBarLabels,
   checkScore,
   getInstrument,
   markPickup,
@@ -85,16 +87,28 @@ interface Result {
 
 const QUICK = ["piano", "trumpet-bb", "cornet-bb", "horn-f", "trombone", "tuba", "clarinet-bb", "alto-sax", "flute", "voice"];
 
+/** A part scanned on its own, ready to join a score: the score with it, and its pages. */
+export interface ScannedPart {
+  score: Score;
+  pages: Omit<PageRecord, "id" | "projectId" | "index">[];
+  label: string;
+}
+
 export function ScanImport({
   files: initialFiles,
   onClose,
   onDone,
   onOpenSettings,
+  addTo,
+  onAddPart,
 }: {
   files: File[];
   onClose: () => void;
   onDone: (projectId: string) => void;
   onOpenSettings: () => void;
+  /** Read a part printed on its own and add it to this score, instead of making a new project. */
+  addTo?: { name: string; score: Score };
+  onAddPart?: (part: ScannedPart) => Promise<void>;
 }) {
   const mobile = useMediaQuery("(max-width: 48em)");
   const settings = getSettings();
@@ -115,6 +129,8 @@ export function ScanImport({
   // A second homr on the server can read every page again; the better reading of each page is kept.
   const [secondEngine, setSecondEngine] = useState<OmrEngineInfo | null>(null);
   const [readTwice, setReadTwice] = useState(true);
+  // Adding a part: the score's bar its first bar goes to.
+  const [startBar, setStartBar] = useState(0);
   const cancelled = useRef(false);
   const addInput = useRef<HTMLInputElement>(null);
   const objectUrls = useRef<string[]>([]);
@@ -342,11 +358,52 @@ export function ScanImport({
     }
   }
 
+  // How the part lines up with the score it joins. It is named after the instrument chosen, unless
+  // the name printed on the page is that instrument's (e.g. "Horn 2 in F").
+  const joined = useMemo(() => {
+    if (!addTo || !result) return null;
+    const chosen = getInstrument(instrument);
+    const parts = result.score.parts.map((p) => (matchInstrument(p.name)?.id === chosen.id ? p : { ...p, name: chosen.name, abbreviation: chosen.abbreviation }));
+    return addScannedPart(addTo.score, { ...result.score, parts }, { at: startBar });
+  }, [addTo, result, startBar, instrument]);
+  const barLabels = useMemo(() => (addTo ? aiBarLabels(addTo.score).map((label, i) => ({ value: String(i), label: `Bar ${label}` })) : []), [addTo]);
+
+  async function addPart() {
+    if (!result || !joined || !onAddPart) return;
+    setSaving(true);
+    try {
+      // The pages' lines and disagreements follow the bars to where they are in the score now.
+      const idOf = new Map(result.score.measures.map((m, j) => [m.id, joined.measureIds[j]!]));
+      const partId = joined.partIds[0]!;
+      const pages = result.pages.map(({ index: _index, ...page }) => ({
+        ...page,
+        partId,
+        ...(page.layout
+          ? {
+              layout: {
+                ...page.layout,
+                ...(page.layout.measureRange ? { measureRange: [page.layout.measureRange[0] + startBar, page.layout.measureRange[1] + startBar] as [number, number] } : {}),
+                ...(page.layout.systemStartIds ? { systemStartIds: page.layout.systemStartIds.map((id) => idOf.get(id) ?? id) } : {}),
+              },
+            }
+          : {}),
+        ...(page.recognition
+          ? { recognition: { ...page.recognition, disagreements: page.recognition.disagreements.map((d) => ({ ...d, measureId: idOf.get(d.measureId) ?? d.measureId })) } }
+          : {}),
+      }));
+      const name = joined.score.parts.find((p) => p.id === partId)?.name ?? prettyName(getInstrument(instrument).name);
+      await onAddPart({ score: joined.score, pages, label: `Added the ${name} part from a scan` });
+    } catch (e) {
+      setError((e as Error).message);
+      setSaving(false);
+    }
+  }
+
   const instrumentData = useMemo(() => instrumentOptions(), []);
   const progress = job ? Math.round(((job.progress.done + (job.status === "running" ? 0.3 : 0)) / Math.max(1, job.progress.total)) * 100) : 0;
 
   return (
-    <Modal opened onClose={onClose} title="Read sheet music" size="xl" fullScreen={mobile} closeOnClickOutside={false}>
+    <Modal opened onClose={onClose} title={addTo ? `Add a scanned part to ${addTo.name}` : "Read sheet music"} size="xl" fullScreen={mobile} closeOnClickOutside={false}>
       {!configured ? (
         <Stack>
           <Alert icon={<IconPlugConnected size={18} />} color="blue" title="Connect your server first">
@@ -501,15 +558,17 @@ export function ScanImport({
                 </Group>
               </Chip.Group>
               <Select label="Or choose another instrument" searchable value={instrument} onChange={(v) => setInstrument(v ?? "piano")} data={instrumentData} allowDeselect={false} />
-              <TextInput
-                label="Title"
-                description="Leave as is to use the title found on the page, if any."
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.currentTarget.value);
-                  setTitleEdited(true);
-                }}
-              />
+              {!addTo && (
+                <TextInput
+                  label="Title"
+                  description="Leave as is to use the title found on the page, if any."
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.currentTarget.value);
+                    setTitleEdited(true);
+                  }}
+                />
+              )}
               {secondEngine && (
                 <Checkbox
                   checked={readTwice}
@@ -582,7 +641,7 @@ export function ScanImport({
           <Stepper.Step label="Review" description="Open and proofread">
             {result && (
               <Stack mt="md">
-                <TextInput label="Title" value={title} onChange={(e) => setTitle(e.currentTarget.value)} />
+                {!addTo && <TextInput label="Title" value={title} onChange={(e) => setTitle(e.currentTarget.value)} />}
                 <Text size="sm">
                   Read <b>{result.score.measures.length}</b> bars from <b>{result.pages.length}</b> page
                   {result.pages.length > 1 ? "s" : ""} as <b>{prettyName(getInstrument(instrument).name)}</b>.
@@ -623,6 +682,38 @@ export function ScanImport({
                     </Stack>
                   </Alert>
                 )}
+                {error && (
+                  <Alert color="red" title="The part could not be added">
+                    {error}
+                  </Alert>
+                )}
+                {addTo && joined && (
+                  <Alert color="blue" variant="light" title={`How it lines up with ${addTo.name}`} data-testid="part-lineup">
+                    <Stack gap={6}>
+                      <Tip label="The bar of the score where the part's first bar goes: later if the scanned pages start further on">
+                        <Select
+                          size="xs"
+                          w={160}
+                          label="Its first bar goes to"
+                          data={barLabels}
+                          value={String(startBar)}
+                          onChange={(v) => setStartBar(Number(v ?? 0))}
+                          allowDeselect={false}
+                          searchable
+                        />
+                      </Tip>
+                      {joined.notes.length ? (
+                        joined.notes.map((note) => (
+                          <Text key={note} size="sm">
+                            {note}
+                          </Text>
+                        ))
+                      ) : (
+                        <Text size="sm">Bar for bar, the same length as the score.</Text>
+                      )}
+                    </Stack>
+                  </Alert>
+                )}
                 <Alert color={result.issues.length ? "blue" : "green"} variant="light">
                   {result.issues.length
                     ? `${result.issues.length} bar${result.issues.length > 1 ? "s" : ""} look suspicious (for example, notes that don't add up to the time signature). They are listed under Checks and marked in the score; compare them with the original page shown next to the score.`
@@ -649,11 +740,19 @@ export function ScanImport({
                         Back
                       </Button>
                     </Tip>
-                    <Tip label="Save the score as a new project and open it, with the original pages beside it">
-                      <Button onClick={() => void open()} loading={saving}>
-                        Open score
-                      </Button>
-                    </Tip>
+                    {addTo ? (
+                      <Tip label={`Add this part to ${addTo.name}, lined up as above, with its pages beside the score; undo takes it out again`}>
+                        <Button onClick={() => void addPart()} loading={saving}>
+                          Add to the score
+                        </Button>
+                      </Tip>
+                    ) : (
+                      <Tip label="Save the score as a new project and open it, with the original pages beside it">
+                        <Button onClick={() => void open()} loading={saving}>
+                          Open score
+                        </Button>
+                      </Tip>
+                    )}
                   </Group>
                 </Group>
               </Stack>

@@ -10,6 +10,8 @@ export interface SystemCrop {
   measures: [number, number];
   /** Normalised box on the page. */
   box: { x: number; y: number; width: number; height: number };
+  /** The part the page holds alone (a separately scanned part); all parts when absent. */
+  partId?: string;
 }
 
 /** The systems (lines of music) of the scanned pages, with the bars each one holds and a crop box. */
@@ -30,7 +32,7 @@ export function pageSystems(pages: PageRecord[], score: Score): SystemCrop[] {
         width: Math.min(1, right + 0.02) - Math.max(0, x - 0.02),
         height: Math.min(1, bottom + pad) - Math.max(0, y - pad),
       };
-      return { page: system.page, measures: [system.from, system.to] as [number, number], box };
+      return { page: system.page, measures: [system.from, system.to] as [number, number], box, ...(system.partId ? { partId: system.partId } : {}) };
     });
 }
 
@@ -95,7 +97,8 @@ export function lookAtPageTool(pages: PageRecord[]): BrowserTool {
       }
       const chosen = systems.slice(0, 3);
       const images = await Promise.all(chosen.map((s) => cropPage(pages[s.page]!, s.box)));
-      const described = chosen.map((s) => `page ${s.page + 1}, bars ${labels[s.measures[0]]}–${labels[s.measures[1]]}`).join("; ");
+      const partName = (id?: string) => (id ? ` (the ${score.parts.find((p) => p.id === id)?.name ?? "one"} part alone)` : "");
+      const described = chosen.map((s) => `page ${s.page + 1}${partName(s.partId)}, bars ${labels[s.measures[0]]}–${labels[s.measures[1]]}`).join("; ");
       const more = systems.length > chosen.length ? ` (${systems.length - chosen.length} more lines not shown; ask for fewer bars)` : "";
       return { result: `Showing ${chosen.length} line${chosen.length > 1 ? "s" : ""} of music: ${described}${more}.`, images };
     },

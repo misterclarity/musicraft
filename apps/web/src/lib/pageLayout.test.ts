@@ -1,7 +1,7 @@
-import { deleteMeasures, expandMultiRest, newScore } from "@musicraft/score-core";
+import { addScannedPart, deleteMeasures, expandMultiRest, newScore } from "@musicraft/score-core";
 import { describe, expect, it } from "vitest";
 import type { PageRecord } from "./db";
-import { resolveSystems } from "./pageLayout";
+import { resolveSystems, systemOfMeasure } from "./pageLayout";
 
 const staff = (y: number) => ({ x: 0.1, y, width: 0.8, height: 0.05 });
 
@@ -52,5 +52,33 @@ describe("scanned page lines", () => {
       [0, 0, 0, 2],
       [1, 0, 3, 6],
     ]);
+  });
+
+  it("keeps the pages of a part scanned on its own apart, and shows its bars on them", () => {
+    const { score: both, partIds } = addScannedPart(score, newScore({ title: "T", parts: [{ instrument: "horn-f" }], measures: 8 }));
+    const partPage: PageRecord = {
+      projectId: "p",
+      index: 2,
+      name: "horn",
+      blob: new Blob(),
+      width: 1000,
+      height: 1400,
+      partId: partIds[0],
+      layout: { staffs: [staff(0.1), staff(0.4)], staffsPerSystem: 1, systemStarts: [0, 5], systemStartIds: [both.measures[0]!.id, both.measures[5]!.id] },
+    };
+    const systems = resolveSystems([...scanned(both, true), partPage], both);
+    // The score's lines as before, and the part's two lines over the same bars.
+    expect(systems.map((s) => [s.page, s.from, s.to, s.partId ?? null])).toEqual([
+      [0, 0, 1, null],
+      [0, 2, 3, null],
+      [1, 4, 7, null],
+      [2, 0, 4, partIds[0]],
+      [2, 5, 7, partIds[0]],
+    ]);
+    expect(systemOfMeasure(systems, 6, partIds[0])?.page).toBe(2);
+    expect(systemOfMeasure(systems, 6, both.parts[0]!.id)?.page).toBe(1);
+    expect(systemOfMeasure(systems, 6)?.page).toBe(1);
+    // Once the part is gone (its adding undone), so are its lines.
+    expect(resolveSystems([...scanned(score, true), partPage], score)).toHaveLength(3);
   });
 });

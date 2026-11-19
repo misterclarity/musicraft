@@ -35,7 +35,8 @@ import { changedBars } from "../ai/diff";
 import type { PageRecord } from "../lib/db";
 import { describeSelection } from "../lib/describe";
 import { handleEditorKey } from "../lib/editor";
-import { listPages } from "../lib/projects";
+import { addPages, listPages } from "../lib/projects";
+import { ScanImport } from "./ScanImport";
 import { modals } from "../lib/modals";
 import { EMPTY_SELECTION, useProject } from "../state/project";
 import { usePlayback } from "../state/playback";
@@ -74,6 +75,8 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
   const [mobileView, setMobileView] = useState<"score" | "original">("score");
   const [barDialog, setBarDialog] = useState<BarDialog | null>(null);
   const [performing, setPerforming] = useState(false);
+  // The pages of a part printed on its own, being read to join the score.
+  const [partScans, setPartScans] = useState<File[] | null>(null);
   const performingRef = useRef(false);
   performingRef.current = performing;
   const [proofreadOpen, setProofreadOpen] = useState(false);
@@ -361,6 +364,7 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                 onApply={apply}
                 selectedPartIds={project.selection.partIds}
                 onSelectPart={(partId) => project.select({ eventIds: [], partIds: [partId], measures: project.selection.measures })}
+                onScanPart={setPartScans}
               />
             </Tabs.Panel>
             <Tabs.Panel value="issues">
@@ -490,8 +494,8 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
                     pages={pages}
                     score={score}
                     selection={project.selection}
-                    onSelectMeasure={(m) => {
-                      project.select({ eventIds: [], measures: { from: m, to: m } });
+                    onSelectMeasure={(m, partId) => {
+                      project.select({ eventIds: [], measures: { from: m, to: m }, ...(partId ? { partIds: [partId] } : {}) });
                       setFocus(m);
                       if (narrow) setMobileView("score");
                     }}
@@ -558,6 +562,23 @@ export function ProjectView({ projectId, onBack, onOpenSettings }: { projectId: 
             />
           </Suspense>
         </Portal>
+      )}
+      {partScans && (
+        <ScanImport
+          files={partScans}
+          addTo={{ name: project.name, score }}
+          onClose={() => setPartScans(null)}
+          onDone={() => setPartScans(null)}
+          onOpenSettings={onOpenSettings}
+          onAddPart={async ({ score: next, pages: added, label }) => {
+            if (previewActive()) throw new Error("Keep or discard the assistant's changes first.");
+            project.apply(next, label, { checkpoint: true });
+            await addPages(projectId, added);
+            setPages(await listPages(projectId));
+            setShowOriginal(true);
+            setPartScans(null);
+          }}
+        />
       )}
       {/* Loaded when first opened, then kept: its findings (and a run) outlast closing it. */}
       {proofreadUsed && (

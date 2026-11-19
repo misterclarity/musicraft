@@ -173,6 +173,33 @@ test("reads a photo with the recognition service, then proofreads it against the
   await expect(page.getByText("Transposed score · 11 bars")).toBeVisible();
 });
 
+test("adds a part printed on its own to a score, lined up bar by bar, with its page beside it", async ({ page, request }) => {
+  await useMockServer(page);
+  const photo = await (await request.get(`${MOCK}/test-page.png`)).body();
+  await importFile(page, "trumpet-part.musicxml");
+  await page.getByTestId("scan-part-input").setInputFiles({ name: "horn part.png", mimeType: "image/png", buffer: photo });
+  const wizard = page.getByRole("dialog", { name: "Add a scanned part to Test March" });
+  await expect(wizard).toBeVisible();
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await wizard.getByText("Horn in F", { exact: true }).first().click();
+  await wizard.getByRole("checkbox", { name: /Also read every page/ }).uncheck();
+  await wizard.getByRole("button", { name: /^Read \d+ page/ }).click();
+  const lineup = wizard.getByTestId("part-lineup");
+  await expect(lineup).toContainText("How it lines up with Test March");
+  await expect(wizard.getByRole("combobox", { name: "Its first bar goes to" })).toHaveValue("Bar 1");
+  await wizard.getByRole("button", { name: "Add to the score" }).click();
+  await expect(wizard).toBeHidden();
+  // Two parts now, and the horn part's page beside the score.
+  await expect(page.locator(".score-page g.staff[data-n='2']").first()).toBeVisible();
+  await expect(page.getByTestId("original-pages")).toContainText("horn part.png · Horn in F part");
+  await page.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByText("Added the Horn in F part from a scan")).toBeVisible();
+  // Undo takes the part (and its page) out again.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".score-page g.staff[data-n='2']")).toHaveCount(0);
+  await expect(page.getByTestId("original-pages")).not.toContainText("Horn in F part");
+});
+
 test("sets multi-bar rests from the list of rests and the bar menu", async ({ page, request }) => {
   await useMockServer(page);
   const photo = await (await request.get(`${MOCK}/test-page.png`)).body();

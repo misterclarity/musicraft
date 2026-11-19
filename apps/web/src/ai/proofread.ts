@@ -73,10 +73,12 @@ export function describeSystem(score: Score, system: SystemCrop): string {
   const written = score.parts.map((part) => writtenContexts(score, part));
   const timeText = (t: TimeSignature) => `${t.beats}/${t.beatType}`;
   // The key as printed in each part: transposing parts read a different key than concert pitch.
+  // A page of one part alone (scanned separately) is compared with that part only.
+  const shown = score.parts.map((part, p) => ({ part, p })).filter(({ part }) => !system.partId || part.id === system.partId);
   const keyText = (m: number) =>
-    score.parts.length === 1
-      ? keyWithCount(written[0]![m]!.key)
-      : score.parts.map((_, p) => `${partHandle(p)} ${keyWithCount(written[p]![m]!.key)}`).join(", ");
+    shown.length === 1
+      ? keyWithCount(written[shown[0]!.p]![m]!.key)
+      : shown.map(({ p }) => `${partHandle(p)} ${keyWithCount(written[p]![m]!.key)}`).join(", ");
   const lines: string[] = [];
   lines.push(`Recognised bars ${labels[from]}–${labels[to]}: time ${timeText(times[from]!)}, key signature ${keyText(from)}.`);
   for (let m = from + 1; m <= to; m++) {
@@ -84,7 +86,7 @@ export function describeSystem(score: Score, system: SystemCrop): string {
     if (info.time) lines.push(`Bar ${labels[m]}: time signature changes to ${timeText(times[m]!)}.`);
     if (info.key && keys[m]!.fifths !== keys[m - 1]!.fifths) lines.push(`Bar ${labels[m]}: key signature changes to ${keyText(m)}.`);
   }
-  score.parts.forEach((part, p) => {
+  shown.forEach(({ part, p }) => {
     const instrument = getInstrument(part.instrument);
     const transposing = !isUnison(instrument.transposition);
     lines.push(`# ${partHandle(p)} "${part.name}" (${instrument.name}${transposing ? ", a transposing instrument" : ""}), written pitch:`);
@@ -164,7 +166,8 @@ export function parseFindings(score: Score, system: SystemCrop, answer: unknown)
   const out: Finding[] = [];
   const data = (answer ?? {}) as { findings?: unknown[]; missing?: unknown[] };
   const resolve = (item: Record<string, unknown>) => {
-    let partIndex = 0;
+    // Without a part named: the page's own part, or the first.
+    let partIndex = Math.max(0, system.partId ? score.parts.findIndex((p) => p.id === system.partId) : 0);
     const part = item.part;
     if (typeof part === "string" || typeof part === "number") {
       const m = /(\d+)/.exec(String(part));

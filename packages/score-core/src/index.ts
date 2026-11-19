@@ -12,6 +12,7 @@ export * from "./performance";
 export * from "./midi";
 export * from "./ops";
 export * from "./omr";
+export * from "./combine";
 export * from "./readings";
 export * from "./edit";
 export * from "./harmony";

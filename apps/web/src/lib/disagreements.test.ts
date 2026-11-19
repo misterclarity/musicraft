@@ -1,4 +1,4 @@
-import { newScore, enterNote, type PartMeasure, type Score } from "@musicraft/score-core";
+import { addScannedPart, newScore, enterNote, type PartMeasure, type Score } from "@musicraft/score-core";
 import { describe, expect, it } from "vitest";
 import type { PageRecord } from "./db";
 import { barPitches, engineOfBars, openDisagreements, sameBar, withOtherReading } from "./disagreements";
@@ -53,5 +53,20 @@ describe("the bars two readings disagree on", () => {
     const pages = [page(s, recognition, [0, 2])];
     expect(openDisagreements(s, pages).map((d) => d.measureIndex)).toEqual([0, 2]);
     expect([...engineOfBars(s, pages).values()]).toEqual(["engine A", "engine A", "engine B", "engine B"]);
+  });
+
+  it("puts another reading into the part that was scanned on its own, and lists its bars by part", () => {
+    const horn = newScore({ title: "T", parts: [{ instrument: "horn-f" }], measures: 4 });
+    const { score: both, partIds } = addScannedPart(horn, score());
+    const trumpetBar = structuredClone(both.parts[1]!.measures[1]!) as PartMeasure;
+    const changed = withOtherReading(both, 0, trumpetBar, partIds[0]);
+    // The scanned part (second) changes; the horn doesn't.
+    expect(barPitches(changed, 0, undefined, partIds[0])).toBe("rests only");
+    expect(changed.parts[0]).toBe(both.parts[0]);
+    const pages = [{ ...page(both, { lineEngines: ["A"], disagreements: [{ measureId: both.measures[1]!.id, kind: "pitch" as const, readBy: "A" }] }, [0]), partId: partIds[0] }];
+    expect(openDisagreements(both, pages)).toEqual([expect.objectContaining({ measureIndex: 1, partId: partIds[0] })]);
+    // Its pages say nothing about the score as first scanned, nor once the part is taken out again.
+    expect(engineOfBars(both, pages).size).toBe(0);
+    expect(openDisagreements(horn, pages)).toEqual([]);
   });
 });

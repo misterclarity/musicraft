@@ -140,6 +140,14 @@ export async function listPages(projectId: string): Promise<PageRecord[]> {
   return db.pages.where("projectId").equals(projectId).sortBy("index");
 }
 
+/** Add scanned pages to a project (a part scanned on its own), after the pages it has. */
+export async function addPages(projectId: string, pages: Omit<PageRecord, "id" | "projectId" | "index">[]): Promise<void> {
+  await db.transaction("rw", db.pages, async () => {
+    const existing = await db.pages.where("projectId").equals(projectId).count();
+    for (const [i, page] of pages.entries()) await db.pages.add({ ...page, index: existing + i, projectId });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Project files (.musicraft): a zip with the score, a MusicXML copy and the page images
 // ---------------------------------------------------------------------------
@@ -151,7 +159,16 @@ interface ProjectFileManifest {
   createdAt: number;
   source: ProjectSource;
   score: Score;
-  pages: { file: string; index: number; name: string; width: number; height: number; layout?: PageRecord["layout"] }[];
+  pages: {
+    file: string;
+    index: number;
+    name: string;
+    width: number;
+    height: number;
+    layout?: PageRecord["layout"];
+    recognition?: PageRecord["recognition"];
+    partId?: string;
+  }[];
 }
 
 export async function exportProjectFile(id: string): Promise<Blob> {
@@ -172,7 +189,16 @@ export async function exportProjectFile(id: string): Promise<Blob> {
     const extension = page.blob.type === "image/png" ? "png" : page.blob.type === "image/webp" ? "webp" : "jpg";
     const file = `pages/page-${String(page.index + 1).padStart(3, "0")}.${extension}`;
     files[file] = [new Uint8Array(await page.blob.arrayBuffer()), { level: 0 }];
-    manifest.pages.push({ file, index: page.index, name: page.name, width: page.width, height: page.height, layout: page.layout });
+    manifest.pages.push({
+      file,
+      index: page.index,
+      name: page.name,
+      width: page.width,
+      height: page.height,
+      layout: page.layout,
+      ...(page.recognition ? { recognition: page.recognition } : {}),
+      ...(page.partId ? { partId: page.partId } : {}),
+    });
   }
   files["project.json"] = strToU8(JSON.stringify(manifest));
   files["score.musicxml"] = strToU8(exportMusicXml(project.score));
@@ -201,6 +227,8 @@ export async function importProjectFile(bytes: Uint8Array): Promise<string> {
       width: p.width,
       height: p.height,
       layout: p.layout,
+      ...(p.recognition ? { recognition: p.recognition } : {}),
+      ...(p.partId ? { partId: p.partId } : {}),
       blob: new Blob(data ? [data as BlobPart] : [], { type }),
     };
   });

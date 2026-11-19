@@ -14,14 +14,19 @@ interface Highlight {
 /** Which page and line of music a measure came from, and where a selected note sits on the page. */
 export function locateOnPages(pages: PageRecord[], score: Score, selection: Selection): Highlight | null {
   let measure = selection.measures?.from;
+  let partId = selection.partIds?.[0];
   let eventId: string | undefined;
   if (selection.eventIds.length) {
     eventId = selection.eventIds[0];
     const loc = eventId ? locate(score, eventId) : undefined;
-    if (loc) measure = loc.measureIndex;
+    if (loc) {
+      measure = loc.measureIndex;
+      partId = score.parts[loc.partIndex]?.id;
+    }
   }
   if (measure === undefined) return null;
-  const system = systemOfMeasure(resolveSystems(pages, score), measure);
+  // A separately scanned part shows on its own pages.
+  const system = systemOfMeasure(resolveSystems(pages, score), measure, partId);
   if (!system) return null;
   const page = pages[system.page]!;
   const position = eventId ? page.layout?.notePositions?.[eventId] : undefined;
@@ -41,7 +46,8 @@ export function OriginalPages({
   pages: PageRecord[];
   score: Score;
   selection: Selection;
-  onSelectMeasure: (measureIndex: number) => void;
+  /** A line was clicked: its first bar, in the part the page holds (if it holds one alone). */
+  onSelectMeasure: (measureIndex: number, partId?: string) => void;
 }) {
   const urls = useMemo(() => pages.map((p) => URL.createObjectURL(p.blob)), [pages]);
   useEffect(() => () => urls.forEach((u) => URL.revokeObjectURL(u)), [urls]);
@@ -56,6 +62,9 @@ export function OriginalPages({
   return (
     <div className="original-pages" data-testid="original-pages">
       {pages.map((page, i) => {
+        // The pages of a part no longer in the score (its adding undone) are put away.
+        const part = page.partId ? score.parts.find((p) => p.id === page.partId) : undefined;
+        if (page.partId && !part) return null;
         const layout = page.layout;
         const perSystem = Math.max(1, layout?.staffsPerSystem ?? 1);
         return (
@@ -64,14 +73,14 @@ export function OriginalPages({
             <img src={urls[i]} alt={page.name} />
             {layout?.staffs.map((staff, s) => {
               const system = Math.floor(s / perSystem);
-              const firstMeasure = systems.find((x) => x.page === i && x.system === system)?.from ?? 0;
+              const line = systems.find((x) => x.page === i && x.system === system);
               return (
                 <div
                   key={s}
                   className="original-staff"
                   title={`Line ${system + 1}`}
                   style={{ left: `${staff.x * 100}%`, top: `${staff.y * 100}%`, width: `${staff.width * 100}%`, height: `${staff.height * 100}%` }}
-                  onClick={() => onSelectMeasure(firstMeasure)}
+                  onClick={() => onSelectMeasure(line?.from ?? 0, line?.partId)}
                 />
               );
             })}
@@ -90,6 +99,7 @@ export function OriginalPages({
             </div>
             <Text size="xs" c="dimmed" ta="center" mt={4}>
               {page.name}
+              {part ? ` · ${part.name} part` : ""}
             </Text>
           </div>
         );

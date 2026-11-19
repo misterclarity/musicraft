@@ -19,6 +19,8 @@ export interface PageSystem {
   to: number;
   /** Its staff boxes (normalised 0–1). */
   staffs: Box[];
+  /** The part the page holds alone (a separately scanned part); the whole score when absent. */
+  partId?: string;
 }
 
 /**
@@ -27,10 +29,23 @@ export interface PageSystem {
  * the right line. Projects saved before lines had ids use bar positions instead.
  */
 export function resolveSystems(pages: PageRecord[], score: Score): PageSystem[] {
+  // The whole score's pages and each separately scanned part's pages are lines of their own; pages of
+  // a part no longer in the score (its adding undone) are left out.
+  const parts = new Set(score.parts.map((p) => p.id));
+  const groups = new Map<string | undefined, number[]>();
+  pages.forEach((page, p) => {
+    if (page.partId !== undefined && !parts.has(page.partId)) return;
+    groups.set(page.partId, [...(groups.get(page.partId) ?? []), p]);
+  });
+  return [...groups].flatMap(([partId, indexes]) => resolveGroup(pages, indexes, score, partId));
+}
+
+function resolveGroup(pages: PageRecord[], indexes: number[], score: Score, partId: string | undefined): PageSystem[] {
   const indexById = new Map(score.measures.map((m, i) => [m.id, i]));
   const last = score.measures.length - 1;
   const starts: { page: number; system: number; start: number; staffs: Box[]; pageEnd?: number }[] = [];
-  pages.forEach((page, p) => {
+  indexes.forEach((p) => {
+    const page = pages[p]!;
     const layout = page.layout;
     if (!layout) return;
     const perSystem = Math.max(1, layout.staffsPerSystem ?? 1);
@@ -56,11 +71,12 @@ export function resolveSystems(pages: PageRecord[], score: Score): PageSystem[] 
     const next = starts[k + 1];
     let to = next ? next.start - 1 : last;
     if (entry.pageEnd !== undefined && (!next || next.page !== entry.page)) to = Math.min(to, entry.pageEnd);
-    return { page: entry.page, system: entry.system, from: entry.start, to: Math.max(entry.start, to), staffs: entry.staffs };
+    return { page: entry.page, system: entry.system, from: entry.start, to: Math.max(entry.start, to), staffs: entry.staffs, ...(partId ? { partId } : {}) };
   });
 }
 
-/** The line that holds a bar, if any. */
-export function systemOfMeasure(systems: PageSystem[], measureIndex: number): PageSystem | undefined {
-  return systems.find((s) => s.from <= measureIndex && measureIndex <= s.to);
+/** The line that holds a bar: on the part's own pages if it has them, else on the score's, if any. */
+export function systemOfMeasure(systems: PageSystem[], measureIndex: number, partId?: string): PageSystem | undefined {
+  const holding = systems.filter((s) => s.from <= measureIndex && measureIndex <= s.to);
+  return holding.find((s) => partId !== undefined && s.partId === partId) ?? holding.find((s) => s.partId === undefined) ?? holding[0];
 }

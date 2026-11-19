@@ -2,7 +2,7 @@ import { Badge, Button, Group, Paper, Stack, Text, UnstyledButton } from "@manti
 import type { Score } from "@musicraft/score-core";
 import { useMemo } from "react";
 import type { PageRecord, ReadingDisagreement } from "../lib/db";
-import { barPitches, openDisagreements, sameBar, withOtherReading } from "../lib/disagreements";
+import { barPitches, openDisagreements, readingPart, sameBar, withOtherReading } from "../lib/disagreements";
 import { Tip } from "./Tip";
 
 const MAX_ROWS = 80;
@@ -32,8 +32,8 @@ export function DisagreementsPanel({ score, pages, onApply, onShow }: Props) {
         engine&apos;s version; undo takes it out again.
       </Text>
       <Stack gap={4} mt={6}>
-        {rows.slice(0, MAX_ROWS).map(({ disagreement, measureIndex }) => (
-          <Row key={disagreement.measureId} score={score} disagreement={disagreement} measureIndex={measureIndex} onApply={onApply} onShow={onShow} />
+        {rows.slice(0, MAX_ROWS).map(({ disagreement, measureIndex, partId }) => (
+          <Row key={`${partId ?? ""}${disagreement.measureId}`} score={score} disagreement={disagreement} measureIndex={measureIndex} partId={partId} onApply={onApply} onShow={onShow} />
         ))}
         {rows.length > MAX_ROWS && (
           <Text size="xs" c="dimmed">
@@ -45,17 +45,26 @@ export function DisagreementsPanel({ score, pages, onApply, onShow }: Props) {
   );
 }
 
-function Row({ score, disagreement, measureIndex, onApply, onShow }: { score: Score; disagreement: ReadingDisagreement; measureIndex: number } & Pick<Props, "onApply" | "onShow">) {
-  const number = score.measures[measureIndex]!.number;
+function Row({
+  score,
+  disagreement,
+  measureIndex,
+  partId,
+  onApply,
+  onShow,
+}: { score: Score; disagreement: ReadingDisagreement; measureIndex: number; partId?: string } & Pick<Props, "onApply" | "onShow">) {
+  // A part scanned on its own names itself: its bars are not the first part's.
+  const part = partId ? score.parts[readingPart(score, partId)] : undefined;
+  const number = `${score.measures[measureIndex]!.number}${part ? ` (${part.name})` : ""}`;
   const other = disagreement.bar;
-  const inUse = !!other && sameBar(score.parts[0]?.measures[measureIndex], other);
+  const inUse = !!other && sameBar(score.parts[readingPart(score, partId)]?.measures[measureIndex], other);
   const engine = disagreement.readBy ? ` (${disagreement.readBy})` : "";
   const what =
     disagreement.kind === "missing"
       ? "The other reading has no such bar"
       : disagreement.kind === "rhythm"
         ? "The same notes in another rhythm"
-        : `${barPitches(score, measureIndex)}, or ${other ? barPitches(score, measureIndex, other) : "?"}`;
+        : `${barPitches(score, measureIndex, undefined, partId)}, or ${other ? barPitches(score, measureIndex, other, partId) : "?"}`;
   return (
     <Group gap={6} wrap="nowrap" data-testid="disagreement">
       <UnstyledButton onClick={() => onShow(measureIndex)} style={{ flex: 1, minWidth: 0 }} title="Select this bar and show it on the original page">
@@ -73,7 +82,7 @@ function Row({ score, disagreement, measureIndex, onApply, onShow }: { score: Sc
           </Tip>
         ) : (
           <Tip label={`Put in the other reading's version of bar ${number}${engine}`}>
-            <Button size="compact-xs" variant="light" onClick={() => onApply(withOtherReading(score, measureIndex, other), `Bar ${number} from the other reading`)}>
+            <Button size="compact-xs" variant="light" onClick={() => onApply(withOtherReading(score, measureIndex, other, partId), `Bar ${number} from the other reading`)}>
               Use
             </Button>
           </Tip>

@@ -18,11 +18,12 @@ import {
   IconMusic,
   IconPencil,
   IconPlus,
+  IconScan,
   IconTransfer,
   IconTrash,
   IconWand,
 } from "@tabler/icons-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { modals } from "../lib/modals";
 import { ArrangeModal } from "./ArrangeModal";
 import { ChangeInstrumentModal } from "./ChangeInstrumentModal";
@@ -43,14 +44,18 @@ export function PartsPanel({
   onApply,
   selectedPartIds,
   onSelectPart,
+  onScanPart,
 }: {
   score: Score;
   projectName: string;
   onApply: (next: Score, label: string, checkpoint?: boolean) => void;
   selectedPartIds?: string[];
   onSelectPart?: (partId: string) => void;
+  /** Read a part printed on its own (PDF or photos) and add it to the score. */
+  onScanPart?: (files: File[]) => void;
 }) {
   const [dialog, setDialog] = useState<Dialog>(null);
+  const scanInput = useRef<HTMLInputElement>(null);
   const [newInstrument, setNewInstrument] = useState("trumpet-bb");
 
   return (
@@ -66,6 +71,26 @@ export function PartsPanel({
             Add part
           </Button>
         </Tip>
+        {onScanPart && (
+          <Tip label="Add a part printed on its own: scan or photograph it (or open its PDF), and it joins this score bar by bar">
+            <Button size="xs" variant="default" leftSection={<IconScan size={14} />} onClick={() => scanInput.current?.click()}>
+              Add a scanned part
+            </Button>
+          </Tip>
+        )}
+        <input
+          ref={scanInput}
+          type="file"
+          accept="image/*,.pdf,application/pdf"
+          multiple
+          hidden
+          data-testid="scan-part-input"
+          onChange={(e) => {
+            const files = Array.from(e.currentTarget.files ?? []);
+            e.currentTarget.value = "";
+            if (files.length) onScanPart?.(files);
+          }}
+        />
         <Tip label="Arrange this music for an ensemble (e.g. piano → brass quintet) as a new score: melody, bass and harmony shared out between the instruments">
           <Button size="xs" variant="default" leftSection={<IconWand size={14} />} onClick={() => setDialog({ kind: "arrange" })}>
             Arrange for…
